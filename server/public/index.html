@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESP32 Mesh Dashboard</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #141414; color: #e0e0e0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; padding: 24px 16px;
+  }
+  h1 { font-size: 1.3rem; letter-spacing: .06em; margin-bottom: 20px; color: #fff; }
+
+  /* ── grid ── */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px; width: 100%; max-width: 960px;
+  }
+
+  /* ── unit card ── */
+  .unit {
+    background: #1e1e1e; border: 1px solid #2c2c2c; border-radius: 12px;
+    padding: 18px; display: flex; flex-direction: column; gap: 12px;
+    transition: all .3s ease;
+    position: relative;
+  }
+  .unit.alert {
+    background: #2a1a1a;
+    border: 2px solid #d97706;
+    box-shadow: 0 0 20px rgba(217, 119, 6, 0.3), inset 0 0 30px rgba(217, 119, 6, 0.08);
+    animation: alertPulse 2s ease-in-out infinite;
+  }
+  @keyframes alertPulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(217, 119, 6, 0.3), inset 0 0 30px rgba(217, 119, 6, 0.08); }
+    50% { box-shadow: 0 0 30px rgba(217, 119, 6, 0.5), inset 0 0 40px rgba(217, 119, 6, 0.12); }
+  }
+  .unit-alert-banner {
+    background: linear-gradient(135deg, #d97706, #ea580c);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: .82rem;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 2px 8px rgba(217, 119, 6, 0.4);
+  }
+  .unit-alert-icon {
+    font-size: 1.2rem;
+    animation: alertBounce 1s ease-in-out infinite;
+  }
+  @keyframes alertBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+  .unit-header { display: flex; align-items: center; gap: 10px; }
+  .unit-swatch {
+    width: 34px; height: 34px; border-radius: 8px;
+    border: 1px solid #444; background: #000; flex-shrink: 0;
+    transition: background .15s;
+  }
+  .unit-label { font-weight: 600; font-size: 1rem; }
+  .unit-mac { font-size: .7rem; color: #888; letter-spacing: .04em; margin-top: 2px; }
+  .unit-ip { font-size: .75rem; color: #5fdb8a; letter-spacing: .03em; margin-top: 3px; font-family: monospace; }
+
+  /* ── colour picker ── */
+  .picker-row { display: flex; align-items: center; gap: 10px; }
+  .picker-row input[type=color] {
+    width: 48px; height: 40px; border: none; border-radius: 6px;
+    cursor: pointer; background: none; padding: 0;
+  }
+  .hex-input {
+    flex: 1; background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0;
+    border-radius: 6px; padding: 6px 10px; font-size: .9rem; font-family: monospace;
+  }
+  .hex-input:focus { outline: none; border-color: #666; }
+
+  /* ── mode radio ── */
+  .mode-row { display: flex; gap: 14px; font-size: .85rem; }
+  .mode-row label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+
+  /* ── send button ── */
+  .send-btn {
+    width: 100%; padding: 9px; border: none; border-radius: 8px;
+    background: #2d5af5; color: #fff; font-weight: 600; font-size: .95rem;
+    cursor: pointer; transition: background .15s;
+  }
+  .send-btn:hover:not(:disabled) { background: #4068ff; }
+  .send-btn:disabled { opacity: .45; cursor: default; }
+
+  /* ── off button ── */
+  .off-btn {
+    width: 100%; padding: 9px; border: none; border-radius: 8px;
+    background: #3a3a3a; color: #e0e0e0; font-weight: 600; font-size: .95rem;
+    cursor: pointer; transition: background .15s;
+  }
+  .off-btn:hover:not(:disabled) { background: #4a4a4a; }
+  .off-btn:disabled { opacity: .45; cursor: default; }
+
+  /* ── status ── */
+  .status {
+    font-size: .78rem; min-height: 1.1em; padding: 4px 8px;
+    border-radius: 5px; transition: background .2s;
+  }
+  .status.ok  { color: #5fdb8a; background: #0d2b1a; }
+  .status.err { color: #f07070; background: #2b0f0f; }
+
+  /* ── temp badge ── */
+  .temp-badge {
+    background: #202020; border: 1px solid #2c2c2c; border-radius: 8px;
+    padding: 10px 14px; display: flex; gap: 18px; font-size: .88rem;
+    align-items: center; flex-wrap: wrap;
+  }
+  .temp-badge .lbl { color: #888; font-size: .72rem; margin-bottom: 1px; text-transform: uppercase; }
+  .temp-badge .val { font-size: 1.2rem; font-weight: 700; color: #7ecfff; }
+  .temp-badge .hum .val { color: #9de87a; }
+  .temp-badge .age-txt { font-size: .7rem; color: #555; margin-top: 3px; }
+  .temp-badge .no-data { color: #555; font-style: italic; font-size: .82rem; }
+
+  /* ── offset row ── */
+  .offset-row {
+    display: flex; align-items: center; gap: 6px;
+    font-size: .75rem; color: #666;
+  }
+  .offset-row input[type=number] {
+    width: 62px; background: #252525; border: 1px solid #333; color: #aaa;
+    border-radius: 4px; padding: 3px 6px; font-size: .75rem;
+    -moz-appearance: textfield;
+  }
+  .offset-row input[type=number]::-webkit-outer-spin-button,
+  .offset-row input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+  /* ── signal panel ── */
+  .signal-panel {
+    width: 100%; max-width: 960px; margin-top: 16px;
+    background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 12px;
+    padding: 16px 20px;
+  }
+  .panel-title {
+    font-size: .72rem; color: #555; letter-spacing: .1em;
+    text-transform: uppercase; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .ws-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    display: inline-block; transition: background .4s;
+  }
+  .ws-dot.connected    { background: #4ade80; box-shadow: 0 0 6px #4ade8099; }
+  .ws-dot.disconnected { background: #555; }
+
+  .signal-rows { display: flex; flex-direction: column; gap: 10px; }
+  .signal-row {
+    display: grid;
+    grid-template-columns: 100px 90px 80px 1fr;
+    align-items: center; gap: 10px;
+  }
+  .signal-row-label { font-size: .82rem; color: #aaa; }
+  .signal-bars { display: flex; align-items: flex-end; gap: 3px; height: 22px; }
+  .bar {
+    border-radius: 2px; background: #333; transition: background .35s;
+    flex-shrink: 0;
+  }
+  .bar-1 { width: 7px; height:  6px; }
+  .bar-2 { width: 7px; height:  9px; }
+  .bar-3 { width: 7px; height: 12px; }
+  .bar-4 { width: 7px; height: 16px; }
+  .bar-5 { width: 7px; height: 20px; }
+  .signal-dbm  { font-size: .88rem; font-weight: 700; font-family: monospace; }
+  .signal-qual { font-size: .72rem; color: #666; }
+
+  /* ── sensor chip ── */
+  .unit-sensor-chip {
+    font-size: .68rem; color: #5fdb8a; background: #0d2b1a;
+    border-radius: 4px; padding: 2px 7px; letter-spacing: .04em;
+    display: inline-block; margin-top: 3px;
+  }
+  .unit-role-chip {
+    font-size: .62rem; color: #7ecfff; background: #102538;
+    border-radius: 4px; padding: 2px 7px; letter-spacing: .08em;
+    display: inline-block; margin-left: 6px; text-transform: uppercase; font-weight: 600;
+  }
+  .unit-meta { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+  .unit-meta-row { font-size: .72rem; color: #888; font-family: monospace; display: flex; gap: 6px; align-items: center; }
+  .unit-meta-label { color: #555; min-width: 36px; }
+  .unit-meta-val { color: #aaa; }
+  .unit-meta-val.ip { color: #5fdb8a; }
+  .unit-meta-val.transport { color: #7ecfff; }
+
+  /* ── sync panel ── */
+  .sync-panel {
+    width: 100%; max-width: 960px; margin-top: 16px;
+    background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 12px;
+    padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .sync-rows { display: flex; flex-direction: column; gap: 8px; }
+  .sync-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 0; border-bottom: 1px solid #222;
+  }
+  .sync-row:last-child { border-bottom: none; }
+  .sync-check { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: .88rem; }
+  .sync-check input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color: #2d5af5; }
+  .sync-check input[type=checkbox]:disabled { cursor: not-allowed; }
+  .sync-unit-name { font-weight: 600; color: #ccc; }
+  .sync-sensor-tag {
+    font-size: .68rem; color: #5fdb8a; background: #0d2b1a;
+    border-radius: 4px; padding: 2px 7px; letter-spacing: .04em;
+  }
+  .sync-disp-temp { font-size: 1rem; font-weight: 700; color: #7ecfff; font-family: monospace; min-width: 80px; text-align: right; }
+  .sync-btn {
+    width: 100%; padding: 9px; border: 1px solid #2d7a3e; border-radius: 8px;
+    background: #1d4e2a; color: #5fdb8a; font-weight: 600; font-size: .95rem;
+    cursor: pointer; transition: background .15s;
+  }
+  .sync-btn:hover:not(:disabled) { background: #25623a; }
+  .sync-btn:disabled { opacity: .4; cursor: default; }
+  .sync-hint { font-size: .72rem; color: #555; text-align: center; }
+
+  /* ── log ── */
+  .log-wrap {
+    width: 100%; max-width: 960px; margin-top: 16px;
+    background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 10px;
+    padding: 14px;
+  }
+  .log-title { font-size: .72rem; color: #555; margin-bottom: 8px; letter-spacing: .08em; text-transform: uppercase; }
+  .log-list { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+  .log-entry { font-size: .76rem; color: #888; font-family: monospace; }
+  .log-entry .ts  { color: #555; }
+  .log-entry.ok  .msg { color: #5fdb8a; }
+  .log-entry.err .msg { color: #f07070; }
+</style>
+</head>
+<body>
+<h1>ESP32 Mesh Dashboard <span style="font-size:.7em;color:#666;font-weight:400;">· 2 units</span></h1>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useReducer, useRef } = React;
+
+// ── state ─────────────────────────────────────────────────────────────────────
+const INIT = {
+  rssi:        { wifi: null, b: null },
+  colors:      { a: '#ff0000', b: '#ff0000' },
+  modeB:       'match',
+  tempA:       null,
+  tempB:       null,
+  log:         [],
+  info:        {},
+  wsConnected: false,
+  unitAReachable: true,
+};
+
+function reducer(s, a) {
+  switch (a.type) {
+    case 'RSSI':      return { ...s, rssi: a.data };
+    case 'COLOR':      return { ...s, colors: { ...s.colors, [a.unit]: a.hex } };
+    case 'SET_COLORS': return { ...s, colors: { ...s.colors, ...a.updates } };
+    case 'MODE_B': {
+      const colors = a.mode === 'match' ? { ...s.colors, b: s.colors.a } : s.colors;
+      return { ...s, modeB: a.mode, colors };
+    }
+    case 'TEMP_A': return { ...s, tempA: a.data };
+    case 'TEMP_B': return { ...s, tempB: a.data };
+    case 'LOG':    return { ...s, log: [a.entry, ...s.log].slice(0, 80) };
+    case 'INFO':   return { ...s, info: a.data };
+    case 'WS':     return { ...s, wsConnected: a.ok };
+    case 'UNIT_A_REACHABLE': return { ...s, unitAReachable: a.reachable };
+    default:       return s;
+  }
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+function hexToRgb(hex) {
+  return {
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16),
+  };
+}
+function rssiToBars(rssi) {
+  if (rssi == null) return 0;
+  if (rssi >= -55)  return 5;
+  if (rssi >= -65)  return 4;
+  if (rssi >= -75)  return 3;
+  if (rssi >= -85)  return 2;
+  return 1;
+}
+function rssiColor(rssi) {
+  if (rssi == null) return '#555';
+  if (rssi >= -65)  return '#4ade80';   /* green    */
+  if (rssi >= -75)  return '#facc15';   /* yellow   */
+  if (rssi >= -85)  return '#fb923c';   /* orange   */
+  return '#f87171';                      /* red      */
+}
+function rssiQual(rssi) {
+  if (rssi == null) return 'no data';
+  if (rssi >= -65)  return 'excellent';
+  if (rssi >= -75)  return 'good';
+  if (rssi >= -85)  return 'fair';
+  return 'poor';
+}
+
+// ── WebSocket hook ────────────────────────────────────────────────────────────
+function useRssiWS(dispatch) {
+  const wsRef    = useRef(null);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    function connect() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(proto + '//' + location.host);
+      wsRef.current = ws;
+
+      ws.onopen  = () => dispatch({ type: 'WS', ok: true });
+      ws.onclose = () => {
+        dispatch({ type: 'WS', ok: false });
+        timerRef.current = setTimeout(connect, 3000);
+      };
+      ws.onerror   = () => ws.close();
+      ws.onmessage = e => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'rssi') dispatch({ type: 'RSSI', data: msg.data });
+        } catch (_) {}
+      };
+    }
+    connect();
+    return () => {
+      clearTimeout(timerRef.current);
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, [dispatch]);
+}
+
+// ── SignalMeter ───────────────────────────────────────────────────────────────
+function SignalMeter({ label, rssi }) {
+  const filled = rssiToBars(rssi);
+  const col    = rssiColor(rssi);
+  return (
+    <div className="signal-row">
+      <span className="signal-row-label">{label}</span>
+      <div className="signal-bars">
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} className={'bar bar-' + i}
+               style={{ background: i <= filled ? col : '#2e2e2e' }} />
+        ))}
+      </div>
+      <span className="signal-dbm" style={{ color: col }}>
+        {rssi != null ? rssi + ' dBm' : '—'}
+      </span>
+      <span className="signal-qual">{rssiQual(rssi)}</span>
+    </div>
+  );
+}
+
+// ── SignalPanel ───────────────────────────────────────────────────────────────
+function SignalPanel({ rssi, wsConnected }) {
+  const wifiRssi = rssi.wifi ? rssi.wifi.rssi : null;
+  const bRssi    = rssi.b    ? rssi.b.rssi    : null;
+  return (
+    <div className="signal-panel">
+      <div className="panel-title">
+        <span className={'ws-dot ' + (wsConnected ? 'connected' : 'disconnected')} />
+        Signal Strength
+        <span style={{ color: '#444', fontWeight: 400 }}>
+          {wsConnected ? '— live' : '— reconnecting…'}
+        </span>
+      </div>
+      <div className="signal-rows">
+        <SignalMeter label="A ↔ WiFi" rssi={wifiRssi} />
+        <SignalMeter label="A ↔ B"    rssi={bRssi} />
+      </div>
+    </div>
+  );
+}
+
+// ── TempBadge ─────────────────────────────────────────────────────────────────
+function TempBadge({ data, offset = 0 }) {
+  if (!data) {
+    return (
+      <div className="temp-badge">
+        <span className="no-data">Waiting for temperature…</span>
+      </div>
+    );
+  }
+  if (data.temp_c <= -99) {
+    return (
+      <div className="temp-badge">
+        <span className="no-data" style={{color:'#ea580c'}}>⚠ Sensor error — unit online, sensor not responding</span>
+      </div>
+    );
+  }
+  const f   = ((data.temp_c * 9 / 5 + 32) + offset).toFixed(1);
+  const age = data.age < 60 ? data.age + ' s ago' : Math.floor(data.age / 60) + ' min ago';
+  return (
+    <div className="temp-badge">
+      <div>
+        <div className="lbl">Temp</div>
+        <div className="val">{f} °F</div>
+      </div>
+      <div className="hum">
+        <div className="lbl">Humidity</div>
+        <div className="val">{data.humidity} %</div>
+      </div>
+      <div><div className="age-txt">{age}</div></div>
+    </div>
+  );
+}
+
+// ── TempOffset ────────────────────────────────────────────────────────────────
+function TempOffset({ value, onChange }) {
+  return (
+    <div className="offset-row">
+      <span>Calibration offset:</span>
+      <input type="number" step="0.1" value={value}
+             onChange={e => onChange(parseFloat(e.target.value) || 0)} />
+      <span>°F</span>
+    </div>
+  );
+}
+
+// ── SyncPanel ───────────────────────────────────────────────────────────────────
+const UNIT_SENSORS = { a: 'DHT22', b: 'SHT30' };
+
+function SyncPanel({ tempA, tempB, offsets, includes, onToggle, onSync }) {
+  const units = [
+    { key: 'a', label: 'Unit A', sensor: UNIT_SENSORS.a, data: tempA },
+    { key: 'b', label: 'Unit B', sensor: UNIT_SENSORS.b, data: tempB },
+  ];
+  const hasEnough = units.filter(u => includes[u.key] && u.data).length >= 2;
+  return (
+    <div className="sync-panel">
+      <div className="panel-title">Temperature Calibration Sync</div>
+      <div className="sync-rows">
+        {units.map(u => {
+          const rawF = u.data ? (u.data.temp_c * 9/5 + 32) : null;
+          const displayed = rawF !== null ? (rawF + (offsets[u.key] || 0)).toFixed(1) + ' °F' : '—';
+          return (
+            <div key={u.key} className="sync-row">
+              <label className="sync-check">
+                <input type="checkbox" checked={includes[u.key]}
+                       onChange={() => onToggle(u.key)}
+                       disabled={!u.data} />
+                <span className="sync-unit-name">{u.label}</span>
+                <span className="sync-sensor-tag">{u.sensor}</span>
+              </label>
+              <span className="sync-disp-temp">{displayed}</span>
+            </div>
+          );
+        })}
+      </div>
+      <button className="sync-btn" disabled={!hasEnough} onClick={onSync}>
+        Sync to Average
+      </button>
+      <div className="sync-hint">
+        Adjusts offsets so all included units display the same temperature.
+      </div>
+    </div>
+  );
+}
+
+// ── ColorPicker ───────────────────────────────────────────────────────────────
+function ColorPicker({ hex, onChange, disabled }) {
+  const [local, setLocal] = useState(hex);
+  useEffect(() => setLocal(hex), [hex]);
+
+  function onPicker(e) { setLocal(e.target.value); onChange(e.target.value); }
+  function onText(e) {
+    const v = e.target.value;
+    setLocal(v);
+    if (/^#[0-9a-f]{6}$/i.test(v)) onChange(v);
+  }
+  return (
+    <div className="picker-row" style={disabled ? { opacity: .4, pointerEvents: 'none' } : {}}>
+      {/* color input always reflects parent state immediately; text input uses local state for smooth typing */}
+      <input type="color" value={hex} onChange={onPicker} />
+      <input type="text" className="hex-input" value={local} onChange={onText} maxLength={7} />
+    </div>
+  );
+}
+
+// ── ActivityLog ───────────────────────────────────────────────────────────────
+function ActivityLog({ entries }) {
+  return (
+    <div className="log-wrap">
+      <div className="log-title">Activity Log</div>
+      <div className="log-list">
+        {entries.map((e, i) => (
+          <div key={i} className={'log-entry ' + (e.ok ? 'ok' : 'err')}>
+            <span className="ts">[{e.ts}] </span>
+            <span className="msg">{e.unit}: {e.msg}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
+function App() {
+  const [state, dispatch] = useReducer(reducer, INIT);
+
+  // per-unit send state — kept outside reducer for simplicity
+  const [statusA, setStatusA] = useState(null);
+  const [statusB, setStatusB] = useState(null);
+  const [busyA, setBusyA]     = useState(false);
+  const [busyB, setBusyB]     = useState(false);
+
+  // Per-unit calibration offsets in °F — persisted to localStorage
+  const loadOffsets = () => {
+    try { return JSON.parse(localStorage.getItem('tempOffsets') || 'null') || { a: 0, b: 0 }; }
+    catch { return { a: 0, b: 0 }; }
+  };
+  const [offsets, setOffsets] = useState(loadOffsets);
+  function setOffset(unit, val) {
+    setOffsets(prev => {
+      const next = { ...prev, [unit]: val };
+      try { localStorage.setItem('tempOffsets', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  // Sync-to-average includes — persisted to localStorage
+  const loadSyncIncludes = () => {
+    try { return JSON.parse(localStorage.getItem('syncIncludes') || 'null') || { a: true, b: true }; }
+    catch { return { a: true, b: true }; }
+  };
+  const [syncIncludes, setSyncIncludes] = useState(loadSyncIncludes);
+  function toggleSyncInclude(unit) {
+    setSyncIncludes(prev => {
+      const next = { ...prev, [unit]: !prev[unit] };
+      try { localStorage.setItem('syncIncludes', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  function syncToAverage() {
+    const rawFs = {
+      a: tempA ? (tempA.temp_c * 9/5 + 32) : null,
+      b: tempB ? (tempB.temp_c * 9/5 + 32) : null,
+    };
+    const included = ['a','b'].filter(u => syncIncludes[u] && rawFs[u] !== null);
+    if (included.length < 2) return;
+    const avg = included.reduce((s, u) => s + rawFs[u] + (offsets[u] || 0), 0) / included.length;
+    setOffsets(prev => {
+      const next = { ...prev };
+      included.forEach(u => { next[u] = Math.round((avg - rawFs[u]) * 10) / 10; });
+      try { localStorage.setItem('tempOffsets', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  // Live RSSI via WebSocket
+  useRssiWS(dispatch);
+
+  // MAC info
+  useEffect(() => {
+    fetch('/api/info')
+      .then(r => r.json())
+      .then(d => dispatch({ type: 'INFO', data: d }))
+      .catch(() => {});
+  }, []);
+
+  // Unit A health check — checks connectivity to Unit A (ESP32 sender)
+  useEffect(() => {
+    let consecutiveFailures = 0;
+    async function checkUnitA() {
+      try {
+        const response = await fetch('/api/temp_a', { signal: AbortSignal.timeout(5000) });
+        if (response.ok) {
+          consecutiveFailures = 0;
+          dispatch({ type: 'UNIT_A_REACHABLE', reachable: true });
+        } else {
+          consecutiveFailures++;
+          if (consecutiveFailures >= 2) {
+            dispatch({ type: 'UNIT_A_REACHABLE', reachable: false });
+          }
+        }
+      } catch (error) {
+        consecutiveFailures++;
+        if (consecutiveFailures >= 2) {
+          dispatch({ type: 'UNIT_A_REACHABLE', reachable: false });
+        }
+      }
+    }
+    checkUnitA(); // immediate check
+    const id = setInterval(checkUnitA, 4000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Temperature polling
+  useEffect(() => {
+    async function poll() {
+      try {
+        const [ra, rb] = await Promise.all([
+          fetch('/api/temp_a').then(r => r.json()),
+          fetch('/api/temp_b').then(r => r.json()),
+        ]);
+        if (ra.ok) dispatch({ type: 'TEMP_A', data: ra });
+        if (rb.ok) dispatch({ type: 'TEMP_B', data: rb });
+      } catch (_) {}
+    }
+    poll();
+    const id = setInterval(poll, 12000);
+    return () => clearInterval(id);
+  }, []);
+
+  // REST fallback RSSI poll — shows signal data even when WebSocket hasn't connected yet
+  useEffect(() => {
+    async function fetchRssi() {
+      try {
+        const data = await fetch('/api/rssi').then(r => r.json());
+        if (data.ok) dispatch({ type: 'RSSI', data: { wifi: data.wifi, b: data.b } });
+      } catch (_) {}
+    }
+    fetchRssi();
+    const id = setInterval(fetchRssi, 1000);
+    return () => clearInterval(id);
+  }, [dispatch]);
+
+  // Send color to a unit
+  async function sendColor(unit, r, g, b, setBusy, setStatus) {
+    setBusy(true);
+    setStatus({ ok: true, msg: 'Sending…' });
+    try {
+      const res  = await fetch('/api/color/' + unit, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ r, g, b }),
+      });
+      const data = await res.json();
+      setStatus({ ok: data.ok, msg: data.message });
+      const ts = new Date().toLocaleTimeString();
+      dispatch({
+        type: 'LOG',
+        entry: { ts, unit: 'Unit ' + unit.toUpperCase(), ok: data.ok, msg: data.message },
+      });
+    } catch (e) {
+      setStatus({ ok: false, msg: 'Network error: ' + e.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleSendA() {
+    const { r, g, b } = hexToRgb(state.colors.a);
+    const sends = [sendColor('a', r, g, b, setBusyA, setStatusA)];
+    if (state.modeB === 'match') sends.push(sendColor('b', r, g, b, setBusyB, setStatusB));
+    Promise.all(sends);
+  }
+
+  function handleColorA(hex) {
+    // Single atomic dispatch so all swatches and pickers update in the same render
+    const updates = { a: hex };
+    if (state.modeB === 'match') updates.b = hex;
+    dispatch({ type: 'SET_COLORS', updates });
+  }
+
+  const { rssi, colors, modeB, tempA, tempB, log, info, wsConnected, unitAReachable } = state;
+
+  return (
+    <>
+      <div className="grid">
+
+        {/* ── UNIT A ── */}
+        <div className="unit">
+          <div className="unit-header">
+            <div className="unit-swatch" style={{ background: colors.a }} />
+            <div>
+              <div className="unit-label">
+                Unit A
+                <span className="unit-role-chip">{info.unitA ? info.unitA.role : 'hub'}</span>
+              </div>
+              <div className="unit-sensor-chip">{info.unitA ? info.unitA.sensor : UNIT_SENSORS.a}</div>
+              <div className="unit-meta">
+                <div className="unit-meta-row"><span className="unit-meta-label">MAC</span><span className="unit-meta-val">{info.unitA ? info.unitA.mac : '—'}</span></div>
+                {info.unitA && info.unitA.ip && <div className="unit-meta-row"><span className="unit-meta-label">IP</span><span className="unit-meta-val ip">{info.unitA.ip}</span></div>}
+                {info.unitA && info.unitA.port && <div className="unit-meta-row"><span className="unit-meta-label">Port</span><span className="unit-meta-val">{info.unitA.port}</span></div>}
+                {info.unitA && info.unitA.transport && <div className="unit-meta-row"><span className="unit-meta-label">Link</span><span className="unit-meta-val transport">{info.unitA.transport}</span></div>}
+              </div>
+            </div>
+          </div>
+          <ColorPicker hex={colors.a} onChange={handleColorA} disabled={false} />
+          <button className="send-btn" disabled={busyA} onClick={handleSendA}>
+            Send to Unit A
+          </button>
+          <button className="off-btn" disabled={busyA} onClick={() => sendColor('a', 0, 0, 0, setBusyA, setStatusA)}>
+            Turn OFF
+          </button>
+          <div className={'status ' + (statusA ? (statusA.ok ? 'ok' : 'err') : '')}>
+            {statusA ? statusA.msg : ''}
+          </div>
+          <TempBadge data={tempA} offset={offsets.a} />
+          <TempOffset value={offsets.a} onChange={v => setOffset('a', v)} />
+        </div>
+
+        {/* ── UNIT B ── */}
+        <div className={`unit ${!unitAReachable ? 'alert' : ''}`}>
+          {!unitAReachable && (
+            <div className="unit-alert-banner">
+              <span className="unit-alert-icon">⚠️</span>
+              <span>Unit A must be active</span>
+            </div>
+          )}
+          <div className="unit-header">
+            <div className="unit-swatch" style={{ background: colors.b }} />
+            <div>
+              <div className="unit-label">
+                Unit B
+                <span className="unit-role-chip">{info.unitB ? info.unitB.role : 'sensor'}</span>
+              </div>
+              <div className="unit-sensor-chip">{info.unitB ? info.unitB.sensor : UNIT_SENSORS.b}</div>
+              <div className="unit-meta">
+                <div className="unit-meta-row"><span className="unit-meta-label">MAC</span><span className="unit-meta-val">{info.unitB ? info.unitB.mac : '—'}</span></div>
+                {info.unitB && info.unitB.port && <div className="unit-meta-row"><span className="unit-meta-label">Port</span><span className="unit-meta-val">{info.unitB.port}</span></div>}
+                {info.unitB && info.unitB.transport && <div className="unit-meta-row"><span className="unit-meta-label">Link</span><span className="unit-meta-val transport">{info.unitB.transport}</span></div>}
+              </div>
+            </div>
+          </div>
+          <div className="mode-row">
+            <label>
+              <input type="radio" name="modeB" value="match"
+                     checked={modeB === 'match'}
+                     onChange={() => dispatch({ type: 'MODE_B', mode: 'match' })} />
+              Match A
+            </label>
+            <label>
+              <input type="radio" name="modeB" value="independent"
+                     checked={modeB === 'independent'}
+                     onChange={() => dispatch({ type: 'MODE_B', mode: 'independent' })} />
+              Independent
+            </label>
+          </div>
+          <ColorPicker hex={colors.b}
+                       onChange={hex => dispatch({ type: 'COLOR', unit: 'b', hex })}
+                       disabled={modeB === 'match'} />
+          <button className="send-btn"
+                  disabled={busyB || modeB !== 'independent'}
+                  onClick={() => { const {r,g,b} = hexToRgb(colors.b); sendColor('b',r,g,b,setBusyB,setStatusB); }}>
+            Send to Unit B
+          </button>
+          <button className="off-btn"
+                  disabled={busyB || modeB !== 'independent'}
+                  onClick={() => sendColor('b', 0, 0, 0, setBusyB, setStatusB)}>
+            Turn OFF
+          </button>
+          <div className={'status ' + (statusB ? (statusB.ok ? 'ok' : 'err') : '')}>
+            {statusB ? statusB.msg : ''}
+          </div>
+          <TempBadge data={tempB} offset={offsets.b} />
+          <TempOffset value={offsets.b} onChange={v => setOffset('b', v)} />
+        </div>
+
+      </div>
+
+      {/* ── SYNC PANEL ── */}
+      <SyncPanel
+        tempA={tempA} tempB={tempB}
+        offsets={offsets}
+        includes={syncIncludes}
+        onToggle={toggleSyncInclude}
+        onSync={syncToAverage}
+      />
+
+      {/* ── SIGNAL PANEL ── */}
+      <SignalPanel rssi={rssi} wsConnected={wsConnected} />
+
+      {/* ── ACTIVITY LOG ── */}
+      <ActivityLog entries={log} />
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
