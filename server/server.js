@@ -72,6 +72,14 @@ app.get('/api/info', (_req, res) => {
             role: 'sensor',
             transport: 'ESP-NOW (ch 11)',
         },
+        unitC: {
+            mac: 'a4:cb:8f:d1:ef:a0',
+            ip: null,
+            port: 'COM14',
+            sensor: 'DHT11',
+            role: 'sensor',
+            transport: 'ESP-NOW (ch 11)',
+        },
     });
 });
 
@@ -113,6 +121,12 @@ app.post('/api/color/b', async (req, res) => {
     await callEsp('forward', r, g, b, res);
 });
 
+app.post('/api/color/c', async (req, res) => {
+    const { r, g, b } = req.body;
+    if (!validateRgb(r, g, b)) return res.status(400).json({ ok: false, message: 'r, g, b must be integers 0-255' });
+    await callEsp('forward_c', r, g, b, res);
+});
+
 app.get('/api/temp_a', async (_req, res) => {
     if (!ESP_IP) return res.status(503).json({ ok: false, message: 'ESP_IP not configured' });
     const url = `http://${ESP_IP}/temp_a`;
@@ -128,6 +142,31 @@ app.get('/api/temp_a', async (_req, res) => {
 app.get('/api/temp_b', async (_req, res) => {
     if (!ESP_IP) return res.status(503).json({ ok: false, message: 'ESP_IP not configured' });
     const url = `http://${ESP_IP}/temp_b`;
+    try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
+        const data     = await response.json();
+        res.json(data);
+    } catch (err) {
+        res.status(503).json({ ok: false, message: `ESP32 unreachable -- ${err.message}` });
+    }
+});
+
+app.get('/api/temp_c', async (_req, res) => {
+    if (!ESP_IP) return res.status(503).json({ ok: false, message: 'ESP_IP not configured' });
+    const url = `http://${ESP_IP}/temp_c`;
+    try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
+        const data     = await response.json();
+        res.json(data);
+    } catch (err) {
+        res.status(503).json({ ok: false, message: `ESP32 unreachable -- ${err.message}` });
+    }
+});
+
+// Alias for backward compat
+app.get('/api/temp', async (_req, res) => {
+    if (!ESP_IP) return res.status(503).json({ ok: false, message: 'ESP_IP not configured' });
+    const url = `http://${ESP_IP}/temp`;
     try {
         const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
         const data     = await response.json();

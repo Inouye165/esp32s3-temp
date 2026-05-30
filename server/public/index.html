@@ -242,7 +242,7 @@
 </style>
 </head>
 <body>
-<h1>ESP32 Mesh Dashboard <span style="font-size:.7em;color:#666;font-weight:400;">· 2 units</span></h1>
+<h1>ESP32 Mesh Dashboard <span style="font-size:.7em;color:#666;font-weight:400;">· 3 units</span></h1>
 <div id="root"></div>
 
 <script type="text/babel">
@@ -250,11 +250,13 @@ const { useState, useEffect, useReducer, useRef } = React;
 
 // ── state ─────────────────────────────────────────────────────────────────────
 const INIT = {
-  rssi:        { wifi: null, b: null },
-  colors:      { a: '#ff0000', b: '#ff0000' },
+  rssi:        { wifi: null, b: null, c: null },
+  colors:      { a: '#ff0000', b: '#ff0000', c: '#ff0000' },
   modeB:       'match',
+  modeC:       'match',
   tempA:       null,
   tempB:       null,
+  tempC:       null,
   log:         [],
   info:        {},
   wsConnected: false,
@@ -270,8 +272,13 @@ function reducer(s, a) {
       const colors = a.mode === 'match' ? { ...s.colors, b: s.colors.a } : s.colors;
       return { ...s, modeB: a.mode, colors };
     }
+    case 'MODE_C': {
+      const colors = a.mode === 'match' ? { ...s.colors, c: s.colors.a } : s.colors;
+      return { ...s, modeC: a.mode, colors };
+    }
     case 'TEMP_A': return { ...s, tempA: a.data };
     case 'TEMP_B': return { ...s, tempB: a.data };
+    case 'TEMP_C': return { ...s, tempC: a.data };
     case 'LOG':    return { ...s, log: [a.entry, ...s.log].slice(0, 80) };
     case 'INFO':   return { ...s, info: a.data };
     case 'WS':     return { ...s, wsConnected: a.ok };
@@ -368,6 +375,7 @@ function SignalMeter({ label, rssi }) {
 function SignalPanel({ rssi, wsConnected }) {
   const wifiRssi = rssi.wifi ? rssi.wifi.rssi : null;
   const bRssi    = rssi.b    ? rssi.b.rssi    : null;
+  const cRssi    = rssi.c    ? rssi.c.rssi    : null;
   return (
     <div className="signal-panel">
       <div className="panel-title">
@@ -380,6 +388,7 @@ function SignalPanel({ rssi, wsConnected }) {
       <div className="signal-rows">
         <SignalMeter label="A ↔ WiFi" rssi={wifiRssi} />
         <SignalMeter label="A ↔ B"    rssi={bRssi} />
+        <SignalMeter label="A ↔ C"    rssi={cRssi} />
       </div>
     </div>
   );
@@ -431,12 +440,13 @@ function TempOffset({ value, onChange }) {
 }
 
 // ── SyncPanel ───────────────────────────────────────────────────────────────────
-const UNIT_SENSORS = { a: 'DHT22', b: 'SHT30' };
+const UNIT_SENSORS = { a: 'DHT22', b: 'SHT30', c: 'DHT11' };
 
-function SyncPanel({ tempA, tempB, offsets, includes, onToggle, onSync }) {
+function SyncPanel({ tempA, tempB, tempC, offsets, includes, onToggle, onSync }) {
   const units = [
     { key: 'a', label: 'Unit A', sensor: UNIT_SENSORS.a, data: tempA },
     { key: 'b', label: 'Unit B', sensor: UNIT_SENSORS.b, data: tempB },
+    { key: 'c', label: 'Unit C', sensor: UNIT_SENSORS.c, data: tempC },
   ];
   const hasEnough = units.filter(u => includes[u.key] && u.data).length >= 2;
   return (
@@ -514,13 +524,15 @@ function App() {
   // per-unit send state — kept outside reducer for simplicity
   const [statusA, setStatusA] = useState(null);
   const [statusB, setStatusB] = useState(null);
+  const [statusC, setStatusC] = useState(null);
   const [busyA, setBusyA]     = useState(false);
   const [busyB, setBusyB]     = useState(false);
+  const [busyC, setBusyC]     = useState(false);
 
   // Per-unit calibration offsets in °F — persisted to localStorage
   const loadOffsets = () => {
-    try { return JSON.parse(localStorage.getItem('tempOffsets') || 'null') || { a: 0, b: 0 }; }
-    catch { return { a: 0, b: 0 }; }
+    try { return JSON.parse(localStorage.getItem('tempOffsets') || 'null') || { a: 0, b: 0, c: 0 }; }
+    catch { return { a: 0, b: 0, c: 0 }; }
   };
   const [offsets, setOffsets] = useState(loadOffsets);
   function setOffset(unit, val) {
@@ -533,8 +545,8 @@ function App() {
 
   // Sync-to-average includes — persisted to localStorage
   const loadSyncIncludes = () => {
-    try { return JSON.parse(localStorage.getItem('syncIncludes') || 'null') || { a: true, b: true }; }
-    catch { return { a: true, b: true }; }
+    try { return JSON.parse(localStorage.getItem('syncIncludes') || 'null') || { a: true, b: true, c: true }; }
+    catch { return { a: true, b: true, c: true }; }
   };
   const [syncIncludes, setSyncIncludes] = useState(loadSyncIncludes);
   function toggleSyncInclude(unit) {
@@ -549,8 +561,9 @@ function App() {
     const rawFs = {
       a: tempA ? (tempA.temp_c * 9/5 + 32) : null,
       b: tempB ? (tempB.temp_c * 9/5 + 32) : null,
+      c: tempC ? (tempC.temp_c * 9/5 + 32) : null,
     };
-    const included = ['a','b'].filter(u => syncIncludes[u] && rawFs[u] !== null);
+    const included = ['a','b','c'].filter(u => syncIncludes[u] && rawFs[u] !== null);
     if (included.length < 2) return;
     const avg = included.reduce((s, u) => s + rawFs[u] + (offsets[u] || 0), 0) / included.length;
     setOffsets(prev => {
@@ -603,12 +616,14 @@ function App() {
   useEffect(() => {
     async function poll() {
       try {
-        const [ra, rb] = await Promise.all([
+        const [ra, rb, rc] = await Promise.all([
           fetch('/api/temp_a').then(r => r.json()),
           fetch('/api/temp_b').then(r => r.json()),
+          fetch('/api/temp_c').then(r => r.json()),
         ]);
         if (ra.ok) dispatch({ type: 'TEMP_A', data: ra });
         if (rb.ok) dispatch({ type: 'TEMP_B', data: rb });
+        if (rc.ok) dispatch({ type: 'TEMP_C', data: rc });
       } catch (_) {}
     }
     poll();
@@ -621,7 +636,7 @@ function App() {
     async function fetchRssi() {
       try {
         const data = await fetch('/api/rssi').then(r => r.json());
-        if (data.ok) dispatch({ type: 'RSSI', data: { wifi: data.wifi, b: data.b } });
+        if (data.ok) dispatch({ type: 'RSSI', data: { wifi: data.wifi, b: data.b, c: data.c } });
       } catch (_) {}
     }
     fetchRssi();
@@ -657,6 +672,7 @@ function App() {
     const { r, g, b } = hexToRgb(state.colors.a);
     const sends = [sendColor('a', r, g, b, setBusyA, setStatusA)];
     if (state.modeB === 'match') sends.push(sendColor('b', r, g, b, setBusyB, setStatusB));
+    if (state.modeC === 'match') sends.push(sendColor('c', r, g, b, setBusyC, setStatusC));
     Promise.all(sends);
   }
 
@@ -664,10 +680,11 @@ function App() {
     // Single atomic dispatch so all swatches and pickers update in the same render
     const updates = { a: hex };
     if (state.modeB === 'match') updates.b = hex;
+    if (state.modeC === 'match') updates.c = hex;
     dispatch({ type: 'SET_COLORS', updates });
   }
 
-  const { rssi, colors, modeB, tempA, tempB, log, info, wsConnected, unitAReachable } = state;
+  const { rssi, colors, modeB, modeC, tempA, tempB, tempC, log, info, wsConnected, unitAReachable } = state;
 
   return (
     <>
@@ -762,11 +779,68 @@ function App() {
           <TempOffset value={offsets.b} onChange={v => setOffset('b', v)} />
         </div>
 
+        {/* ── UNIT C ── */}
+        <div className={`unit ${!unitAReachable ? 'alert' : ''}`}>
+          {!unitAReachable && (
+            <div className="unit-alert-banner">
+              <span className="unit-alert-icon">⚠️</span>
+              <span>Unit A must be active</span>
+            </div>
+          )}
+          <div className="unit-header">
+            <div className="unit-swatch" style={{ background: colors.c }} />
+            <div>
+              <div className="unit-label">
+                Unit C
+                <span className="unit-role-chip">{info.unitC ? info.unitC.role : 'sensor'}</span>
+              </div>
+              <div className="unit-sensor-chip">{info.unitC ? info.unitC.sensor : UNIT_SENSORS.c}</div>
+              <div className="unit-meta">
+                <div className="unit-meta-row"><span className="unit-meta-label">MAC</span><span className="unit-meta-val">{info.unitC ? info.unitC.mac : '—'}</span></div>
+                {info.unitC && info.unitC.port && <div className="unit-meta-row"><span className="unit-meta-label">Port</span><span className="unit-meta-val">{info.unitC.port}</span></div>}
+                {info.unitC && info.unitC.transport && <div className="unit-meta-row"><span className="unit-meta-label">Link</span><span className="unit-meta-val transport">{info.unitC.transport}</span></div>}
+              </div>
+            </div>
+          </div>
+          <div className="mode-row">
+            <label>
+              <input type="radio" name="modeC" value="match"
+                     checked={modeC === 'match'}
+                     onChange={() => dispatch({ type: 'MODE_C', mode: 'match' })} />
+              Match A
+            </label>
+            <label>
+              <input type="radio" name="modeC" value="independent"
+                     checked={modeC === 'independent'}
+                     onChange={() => dispatch({ type: 'MODE_C', mode: 'independent' })} />
+              Independent
+            </label>
+          </div>
+          <ColorPicker hex={colors.c}
+                       onChange={hex => dispatch({ type: 'COLOR', unit: 'c', hex })}
+                       disabled={modeC === 'match'} />
+          <button className="send-btn"
+                  disabled={busyC || modeC !== 'independent'}
+                  onClick={() => { const {r,g,b} = hexToRgb(colors.c); sendColor('c',r,g,b,setBusyC,setStatusC); }}>
+            Send to Unit C
+          </button>
+          <button className="off-btn"
+                  disabled={busyC || modeC !== 'independent'}
+                  onClick={() => sendColor('c', 0, 0, 0, setBusyC, setStatusC)}>
+            Turn OFF
+          </button>
+          <div className={'status ' + (statusC ? (statusC.ok ? 'ok' : 'err') : '')}>
+            {statusC ? statusC.msg : ''}
+          </div>
+          <TempBadge data={tempC} offset={offsets.c} />
+          <TempOffset value={offsets.c} onChange={v => setOffset('c', v)} />
+        </div>
+
       </div>
 
       {/* ── SYNC PANEL ── */}
       <SyncPanel
-        tempA={tempA} tempB={tempB}
+        tempA={tempA} tempB={tempB} tempC={tempC}
         offsets={offsets}
         includes={syncIncludes}
         onToggle={toggleSyncInclude}

@@ -1,17 +1,19 @@
 // ============================================================================
-// ESP-NOW practice — 2-unit mesh (Unit A + Unit B)
+// ESP-NOW practice — 3-unit mesh (Unit A + Unit B + Unit C)
 //
 //   Unit A  (-DROLE_SENDER)   COM12  MAC a4:cb:8f:d1:ef:58  DHT22  + WiFi hub
-//   Unit B  (-DROLE_RECEIVER) COM11  MAC a4:cb:8f:d1:f2:a8  SHT30
+//   Unit B  (-DROLE_RECEIVER) COM11  MAC a4:cb:8f:d1:f2:a8  SHT30  ESP-NOW only
+//   Unit C  (-DROLE_UNIT_C)   COM14  MAC a4:cb:8f:d1:ef:a0  DHT11  ESP-NOW only
 //
 // Wiring
 //   Unit A : DHT22 data -> GPIO 4 ; WS2812B RGB LED on GPIO 48
 //   Unit B : SHT30 SDA  -> GPIO 8 ; SHT30 SCL -> GPIO 9 ; WS2812B on GPIO 48
+//   Unit C : DHT11 data -> GPIO 4 ; WS2812B RGB LED on GPIO 48
 //
 // ESP-NOW packets
-//   ColorPacket  (3 B)  A -> B   r,g,b
-//   TempPacket   (5 B)  B -> A   float temp_c, uint8_t humidity
-//   PingPacket   (2 B)  B -> A   magic=0xBB, seq    (A measures A<->B RSSI)
+//   ColorPacket  (3 B)  A -> B,C   r,g,b
+//   TempPacket   (5 B)  B,C -> A   float temp_c, uint8_t humidity
+//   PingPacket   (2 B)  B,C -> A   magic=0xBB, seq    (A measures RSSI)
 // ============================================================================
 
 #include <Arduino.h>
@@ -73,8 +75,9 @@ static void initEspNowWiFi(bool connectToAp) {
 DHT dht(DHT_PIN, DHT_TYPE);
 WebServer server(80);
 
-// MAC of Unit B (receiver / SHT30)
-uint8_t RECEIVER_B_MAC[] = { 0xa4, 0xcb, 0x8f, 0xd1, 0xf2, 0xa8 };
+// MAC addresses
+uint8_t RECEIVER_B_MAC[] = { 0xa4, 0xcb, 0x8f, 0xd1, 0xf2, 0xa8 };  // Unit B SHT30
+uint8_t RECEIVER_C_MAC[] = { 0xa4, 0xcb, 0x8f, 0xd1, 0xef, 0xa0 };  // Unit C DHT11
 
 // ---- Cached values ----
 static float    _tempA_c   = NAN;
@@ -85,8 +88,15 @@ static float    _tempB_c   = NAN;
 static uint8_t  _humB      = 0;
 static unsigned long _tempB_time = 0;
 
+static float    _tempC_c   = NAN;
+static uint8_t  _humC      = 0;
+static unsigned long _tempC_time = 0;
+
 static int8_t        _rssiB_atA  = 0;
 static unsigned long _rssiB_time = 0;
+
+static int8_t        _rssiC_atA  = 0;
+static unsigned long _rssiC_time = 0;
 
 // ---- WiFi watchdog ----
 static unsigned long _lastWifiCheck = 0;
@@ -111,19 +121,36 @@ static void checkWiFi() {
     }
 }
 
-// ---- ESP-NOW receive (from Unit B) ----
+// ---- ESP-NOW receive (from Unit B and C) ----
 static void onReceive(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
+    const uint8_t *mac = info->src_addr;
+    bool isB = (memcmp(mac, RECEIVER_B_MAC, 6) == 0);
+    bool isC = (memcmp(mac, RECEIVER_C_MAC, 6) == 0);
+    
     if (len == (int)sizeof(TempPacket)) {
         TempPacket pkt; memcpy(&pkt, data, sizeof(pkt));
-        _tempB_c    = pkt.temp_c;
-        _humB       = pkt.humidity;
-        _tempB_time = millis();
-        Serial.printf("[recv B] temp=%.1fC hum=%d%%\n", pkt.temp_c, pkt.humidity);
+        if (isB) {
+            _tempB_c    = pkt.temp_c;
+            _humB       = pkt.humidity;
+            _tempB_time = millis();
+            Serial.printf("[recv B] temp=%.1fC hum=%d%%\n", pkt.temp_c, pkt.humidity);
+        } else if (isC) {
+            _tempC_c    = pkt.temp_c;
+            _humC       = pkt.humidity;
+            _tempC_time = millis();
+            Serial.printf("[recv C] temp=%.1fC hum=%d%%\n", pkt.temp_c, pkt.humidity);
+        }
     } else if (len == (int)sizeof(PingPacket)) {
         PingPacket pkt; memcpy(&pkt, data, sizeof(pkt));
         if (pkt.magic == 0xBB) {
-            _rssiB_atA  = (int8_t)info->rx_ctrl->rssi;
-            _rssiB_time = millis();
+            int8_t rssi = (int8_t)info->rx_ctrl->rssi;
+            if (isB) {
+                _rssiB_atA  = rssi;
+                _rssiB_time = millis();
+            } else if (isC) {
+                _rssiC_atA  = rssi;
+                _rssiC_time = millis();
+            }
         }
     }
 }
@@ -169,6 +196,15 @@ static void handleForward() {
     server.send(200, "text/plain", e == ESP_OK ? "ok" : "send failed");
 }
 
+static void handleForwardC() {
+    uint8_t r, g, b;
+    if (!parseRgb(r, g, b)) { server.send(400, "text/plain", "bad args"); return; }
+    ColorPacket pkt = { r, g, b };
+    esp_err_t e = esp_now_send(RECEIVER_C_MAC, (uint8_t *)&pkt, sizeof(pkt));
+    Serial.printf("[A->C] RGB(%d,%d,%d) send=%d\n", r, g, b, (int)e);
+    server.send(200, "text/plain", e == ESP_OK ? "ok" : "send failed");
+}
+
 static void handleTempA() {
     char buf[128];
     if (isnan(_tempA_c)) {
@@ -195,15 +231,31 @@ static void handleTempB() {
     server.send(200, "application/json", buf);
 }
 
+static void handleTempC() {
+    char buf[128];
+    if (_tempC_time == 0) {
+        snprintf(buf, sizeof(buf), "{\"ok\":false,\"message\":\"no data\"}");
+    } else {
+        unsigned long age = (millis() - _tempC_time) / 1000;
+        snprintf(buf, sizeof(buf),
+            "{\"ok\":true,\"temp_c\":%.2f,\"humidity\":%d,\"age\":%lu}",
+            _tempC_c, _humC, age);
+    }
+    server.send(200, "application/json", buf);
+}
+
 static void handleRssi() {
-    char buf[256];
+    char buf[384];
     unsigned long ageB = _rssiB_time ? (millis() - _rssiB_time) / 1000 : 9999;
+    unsigned long ageC = _rssiC_time ? (millis() - _rssiC_time) / 1000 : 9999;
     snprintf(buf, sizeof(buf),
         "{\"ok\":true,"
          "\"wifi\":{\"rssi\":%d,\"ch\":%d},"
-         "\"b\":{\"rssi\":%d,\"age\":%lu}}",
+         "\"b\":{\"rssi\":%d,\"age\":%lu},"
+         "\"c\":{\"rssi\":%d,\"age\":%lu}}",
         (int)WiFi.RSSI(), WiFi.channel(),
-        _rssiB_time ? _rssiB_atA : 0, ageB);
+        _rssiB_time ? _rssiB_atA : 0, ageB,
+        _rssiC_time ? _rssiC_atA : 0, ageC);
     server.send(200, "application/json", buf);
 }
 
@@ -222,18 +274,27 @@ void setup() {
     if (esp_now_init() != ESP_OK) { Serial.println("ESP-NOW init FAILED"); return; }
     esp_now_register_recv_cb(onReceive);
 
-    // Register Unit B as peer (use whatever channel WiFi negotiated)
-    esp_now_peer_info_t peer = {};
-    memcpy(peer.peer_addr, RECEIVER_B_MAC, 6);
-    peer.channel = 0;
-    peer.encrypt = false;
-    if (esp_now_add_peer(&peer) != ESP_OK) { Serial.println("Add peer B FAILED"); return; }
+    // Register Unit B and C as peers (use whatever channel WiFi negotiated)
+    esp_now_peer_info_t peerB = {};
+    memcpy(peerB.peer_addr, RECEIVER_B_MAC, 6);
+    peerB.channel = 0;
+    peerB.encrypt = false;
+    if (esp_now_add_peer(&peerB) != ESP_OK) { Serial.println("Add peer B FAILED"); return; }
 
-    server.on("/color",   handleColor);
-    server.on("/forward", handleForward);
-    server.on("/temp_a",  handleTempA);
-    server.on("/temp_b",  handleTempB);
-    server.on("/rssi",    handleRssi);
+    esp_now_peer_info_t peerC = {};
+    memcpy(peerC.peer_addr, RECEIVER_C_MAC, 6);
+    peerC.channel = 0;
+    peerC.encrypt = false;
+    if (esp_now_add_peer(&peerC) != ESP_OK) { Serial.println("Add peer C FAILED"); return; }
+
+    server.on("/color",     handleColor);
+    server.on("/forward",   handleForward);
+    server.on("/forward_c", handleForwardC);
+    server.on("/temp_a",    handleTempA);
+    server.on("/temp_b",    handleTempB);
+    server.on("/temp",      handleTempC);   // alias for Unit C
+    server.on("/temp_c",    handleTempC);
+    server.on("/rssi",      handleRssi);
     server.begin();
 
     Serial.println("HTTP server ready");
@@ -254,7 +315,7 @@ void loop() {
 // ============================================================================
 // UNIT B — receiver + SHT30
 // ============================================================================
-#else // ROLE_RECEIVER (default)
+#elif defined(ROLE_RECEIVER)
 
 #include <Wire.h>
 #include <Adafruit_SHT31.h>
@@ -321,6 +382,92 @@ void setup() {
     } else {
         Serial.println("SHT30 NOT FOUND — check wiring (SDA=8, SCL=9)");
     }
+
+    initEspNowWiFi(false);
+
+    if (esp_now_init() != ESP_OK) { Serial.println("ESP-NOW init FAILED"); return; }
+    esp_now_register_recv_cb(onReceive);
+
+    esp_now_peer_info_t peer = {};
+    memcpy(peer.peer_addr, SENDER_MAC, 6);
+    peer.channel = ESPNOW_CHANNEL;
+    peer.encrypt = false;
+    if (esp_now_add_peer(&peer) != ESP_OK) { Serial.println("Add peer A FAILED"); return; }
+
+    Serial.printf("Ready — pings every %lums, temp every %lus\n",
+        PING_INTERVAL_MS, TEMP_INTERVAL_MS / 1000);
+}
+
+void loop() {
+    unsigned long now = millis();
+
+    if (now - _lastPing >= PING_INTERVAL_MS) {
+        _lastPing = now;
+        PingPacket ping = { 0xBB, _pingSeq++ };
+        esp_now_send(SENDER_MAC, (uint8_t *)&ping, sizeof(ping));
+    }
+
+    if (now - _lastTempSend >= TEMP_INTERVAL_MS) {
+        _lastTempSend = now;
+        sendTemp();
+    }
+
+    delay(10);
+}
+
+// ============================================================================
+// UNIT C — unit_c + DHT11
+// ============================================================================
+#elif defined(ROLE_UNIT_C)
+
+#include <DHT.h>
+
+#define DHT_PIN  4
+#define DHT_TYPE DHT11
+
+DHT dht(DHT_PIN, DHT_TYPE);
+
+// MAC of Unit A
+uint8_t SENDER_MAC[] = { 0xa4, 0xcb, 0x8f, 0xd1, 0xef, 0x58 };
+
+#define PING_INTERVAL_MS   500UL
+#define TEMP_INTERVAL_MS 10000UL
+
+static unsigned long _lastPing     = 0;
+static uint8_t       _pingSeq      = 0;
+static unsigned long _lastTempSend = 0;
+
+static void onReceive(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
+    if (len == (int)sizeof(ColorPacket)) {
+        ColorPacket pkt; memcpy(&pkt, data, sizeof(pkt));
+        rgbLedWrite(LED_PIN, pkt.r, pkt.g, pkt.b);
+        Serial.printf("[C] RGB(%d,%d,%d)\n", pkt.r, pkt.g, pkt.b);
+    }
+}
+
+static void sendTemp() {
+    float t = dht.readTemperature();
+    float h = dht.readHumidity();
+    if (isnan(t) || isnan(h)) {
+        TempPacket pkt = { -99.0f, 0 };
+        esp_now_send(SENDER_MAC, (uint8_t *)&pkt, sizeof(pkt));
+        Serial.println("[C] DHT11 read NaN — sent sentinel");
+        return;
+    }
+    TempPacket pkt = { t, (uint8_t)(h + 0.5f) };
+    esp_now_send(SENDER_MAC, (uint8_t *)&pkt, sizeof(pkt));
+    Serial.printf("[C] temp=%.1fC hum=%d%%\n", t, (int)h);
+}
+
+void setup() {
+    Serial.begin(115200);
+    delay(500);
+    Serial.println("\nUnit C — UNIT_C + DHT11");
+
+    pinMode(LED_PIN, OUTPUT);
+    rgbLedWrite(LED_PIN, 0, 0, 0);
+
+    dht.begin();
 
     initEspNowWiFi(false);
 
