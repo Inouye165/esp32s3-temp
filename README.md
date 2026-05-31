@@ -2,6 +2,18 @@
 
 ESP-NOW experimentation project using three **udevqal ESP32-S3 N16R8** development boards.
 
+## Features
+
+- **ESP-NOW Mesh Network**: Three ESP32 units communicating via ESP-NOW protocol
+- **Temperature Monitoring**: DHT22, SHT30, and DHT11 sensors with synchronized readings
+- **Synchronized Temperature Reads**: All units read sensors simultaneously every 30 seconds
+- **Persistent Calibration**: Sensor offsets stored in NVS (survives reboots)
+- **Historical Temperature Logging**: Automatic 5-minute logging to SQLite database
+- **Time-Series Graphing**: Interactive Chart.js visualization with 1h/6h/24h/7d views
+- **Real-time Dashboard**: React-based web UI with WebSocket updates
+- **Signal Strength Monitoring**: Live RSSI display for WiFi and ESP-NOW links
+- **LED Color Control**: Remote control of WS2812B LEDs on all units
+
 ---
 
 ## Modules
@@ -10,9 +22,11 @@ ESP-NOW experimentation project using three **udevqal ESP32-S3 N16R8** developme
 - **COM12**, IP `10.0.0.48`, MAC `a4:cb:8f:d1:ef:58`
 - Connects to home WiFi (SSID / pass from `include/credentials.h`)
 - Hosts a lightweight HTTP server on port 80 — the Node.js dashboard proxies to it
-- Reads its own **DHT22** sensor on GPIO 4 every 15 s, exposes via `/temp_a`
+- **Broadcasts SYNC commands** every 30s to trigger synchronized temperature reads
+- Reads its own **DHT22** sensor on GPIO 4 with calibration offset applied
 - Sends `ColorPacket` to Unit B and Unit C via ESP-NOW (and sets its own WS2812B LED)
-- Receives `TempPacket` from Unit B (SHT30) and Unit C (DHT11), caches them, exposes via `/temp_b` and `/temp_c`
+- Receives `TempPacket` from Unit B (SHT30) and Unit C (DHT11), applies calibration, exposes via `/temp_b` and `/temp_c`
+- **Persistent calibration** stored in NVS (survives reboots)
 - Measures its own RSSI to B and C (B and C ping A every 500 ms); exposes via `/rssi`
 - WiFi watchdog: if WiFi drops for > 30 s the board reboots
 
@@ -22,7 +36,7 @@ ESP-NOW experimentation project using three **udevqal ESP32-S3 N16R8** developme
 - Sets its WS2812B LED to whatever `ColorPacket` A forwards
 - Hosts a **SHT30** (I²C, address `0x44`) temperature + humidity sensor
   - SDA → GPIO 8, SCL → GPIO 9
-- Reads SHT30 every 10 s and sends `TempPacket` to A
+- **Reads SHT30 on SYNC command** from Unit A and sends `TempPacket` immediately
 - Sends `PingPacket` to A every 500 ms so A can measure A↔B RSSI
 
 ### Unit C — unit_c (`-DROLE_UNIT_C`) — **remote sensor**
@@ -30,8 +44,106 @@ ESP-NOW experimentation project using three **udevqal ESP32-S3 N16R8** developme
 - MAC `a4:cb:8f:d1:ef:a0`
 - Sets its WS2812B LED to whatever `ColorPacket` A forwards
 - Hosts a **DHT11** temperature + humidity sensor on GPIO 4
-- Reads DHT11 every 10 s and sends `TempPacket` to A
+- **Reads DHT11 on SYNC command** from Unit A and sends `TempPacket` immediately
 - Sends `PingPacket` to A every 500 ms so A can measure A↔C RSSI
+
+---
+
+## Temperature Synchronization & Calibration
+
+**Problem:** Temperature readings from different sensors (DHT11, DHT22, SHT30) can drift apart due to:
+- Different reading times (no synchronization)
+- Different sensor accuracies (±2°C for DHT11, ±0.5°C for DHT22, ±0.3°C for SHT30)
+- Sensor-specific offsets and calibration errors
+- Different physical locations and ambient conditions
+
+**Solution:** Synchronized reading + persistent calibration offsets
+
+### How It Works
+
+1. **Unit A broadcasts SYNC commands** every 30 seconds (or on-demand via `/sync`)
+2. **Units B and C respond immediately** by reading their sensors
+3. **Unit A reads its own sensor** at the same time
+4. **Calibration offsets** are applied to all readings and stored in NVS (non-volatile storage)
+
+### New HTTP Endpoints
+
+```bash
+# Trigger immediate synchronized read
+GET http://10.0.0.48/sync
+
+# Set calibration offset (in °C)
+GET http://10.0.0.48/set_cal?unit=a&offset=-0.3
+GET http://10.0.0.48/set_cal?unit=b&offset=0.0
+GET http://10.0.0.48/set_cal?unit=c&offset=-1.6
+
+# Get current calibration
+GET http://10.0.0.48/get_cal
+
+# Reset all calibration to zero
+GET http://10.0.0.48/reset_cal
+```
+
+### Quick Calibration Guide
+
+1. **Place all units close together** and wait 10-15 minutes
+2. **Trigger sync read:** `curl http://10.0.0.48/sync`
+3. **Read all temperatures:**
+   ```bash
+   curl http://10.0.0.48/temp_a  # e.g., 23.5°C
+   curl http://10.0.0.48/temp_b  # e.g., 23.2°C (SHT30, most accurate)
+   curl http://10.0.0.48/temp_c  # e.g., 24.8°C
+   ```
+4. **Choose Unit B as reference** (SHT30 is most accurate)
+5. **Calculate offsets:**
+   - Unit A: 23.2 - 23.5 = **-0.3**
+   - Unit B: 23.2 - 23.2 = **0.0**
+   - Unit C: 23.2 - 24.8 = **-1.6**
+6. **Apply calibration:**
+   ```bash
+   curl "http://10.0.0.48/set_cal?unit=a&offset=-0.3"
+   curl "http://10.0.0.48/set_cal?unit=b&offset=0.0"
+   curl "http://10.0.0.48/set_cal?unit=c&offset=-1.6"
+   ```
+7. **Verify:** `curl http://10.0.0.48/sync` then check temps again
+
+**See [SYNC_CALIBRATION.md](SYNC_CALIBRATION.md) for detailed instructions.**
+
+---
+
+## Temperature Logging & Historical Graphing
+
+The server automatically logs temperature readings from all three units every 5 minutes to a SQLite database and displays them in an interactive time-series graph on the dashboard.
+
+**Features:**
+- ⏱️ Automatic 5-minute logging
+- 📊 Interactive Chart.js graph with 1h/6h/24h/7d views
+- 💾 SQLite database (easily migrates to PostgreSQL/MySQL)
+- 🔄 Real-time WebSocket updates
+- 📡 REST API for historical data queries
+- 🎨 Color-coded by unit (A=blue, B=green, C=yellow)
+
+**Dashboard Graph:**
+
+The temperature graph appears at the bottom of the dashboard showing:
+- Unit A (DHT22) in blue
+- Unit B (SHT30) in green  
+- Unit C (DHT11) in yellow
+
+Click the time range buttons (1h, 6h, 24h, 7d) to adjust the view.
+
+**Database:**
+- Location: `server/temperatures.db`
+- Auto-created on first run
+- Schema: `unit_id`, `temp_c`, `humidity`, `timestamp`
+
+**API Endpoints:**
+- `GET /api/temperature/history?hours=24` - Get readings for last N hours
+- `GET /api/temperature/latest` - Get latest reading per unit
+- `GET /api/temperature/stats/a` - Get statistics (avg, min, max)
+- `GET /api/temperature/unit/a?hours=6` - Get readings for specific unit
+
+**See [TEMPERATURE_LOGGING.md](TEMPERATURE_LOGGING.md) for complete documentation and database migration guide.**
 
 ---
 

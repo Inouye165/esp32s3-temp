@@ -5,6 +5,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const http      = require('http');
 const express   = require('express');
 const WebSocket = require('ws');
+const db        = require('./db');
 
 const app    = express();
 const PORT   = process.env.PORT   || 3000;
@@ -52,6 +53,80 @@ setInterval(pollRssi, 300);
 wss.on('connection', ws => {
     if (rssiCache) ws.send(JSON.stringify({ type: 'rssi', data: rssiCache }));
 });
+
+// ── Background temperature polling: fetch every 5 min, save to DB, push via WS ──
+let tempCache = null;
+
+async function pollTemperature() {
+    if (!ESP_IP) return;
+    
+    const timestamp = Math.floor(Date.now() / 1000);
+    const readings = {};
+    
+    // Fetch all three units in parallel
+    const units = [
+        { id: 'a', name: 'Unit A (DHT22)', endpoint: '/temp_a' },
+        { id: 'b', name: 'Unit B (SHT30)', endpoint: '/temp_b' },
+        { id: 'c', name: 'Unit C (DHT11)', endpoint: '/temp_c' },
+    ];
+    
+    const promises = units.map(async (unit) => {
+        try {
+            const response = await fetch(`http://${ESP_IP}${unit.endpoint}`, 
+                { signal: AbortSignal.timeout(3000) });
+            const data = await response.json();
+            
+            // Extract temp and humidity (handle various response formats)
+            const tempC = data.temp_c ?? data.tempC ?? null;
+            const humidity = data.humidity ?? null;
+            
+            readings[unit.id] = { tempC, humidity, ok: true };
+            
+            // Save to database
+            db.insertReading({
+                unitId: unit.id,
+                unitName: unit.name,
+                tempC,
+                humidity,
+                timestamp,
+            });
+            
+            return { unit: unit.id, success: true };
+        } catch (err) {
+            console.error(`[temp poll] ${unit.name} failed: ${err.message}`);
+            readings[unit.id] = { tempC: null, humidity: null, ok: false };
+            
+            // Save null reading to track failures
+            db.insertReading({
+                unitId: unit.id,
+                unitName: unit.name,
+                tempC: null,
+                humidity: null,
+                timestamp,
+            });
+            
+            return { unit: unit.id, success: false };
+        }
+    });
+    
+    await Promise.all(promises);
+    
+    tempCache = { timestamp, readings };
+    
+    // Push to all WebSocket clients
+    const msg = JSON.stringify({ type: 'temperature', data: tempCache });
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) client.send(msg);
+    });
+    
+    console.log(`[temp poll] Logged at ${new Date(timestamp * 1000).toLocaleString()}`);
+}
+
+// Poll every 5 minutes (300,000 ms)
+setInterval(pollTemperature, 5 * 60 * 1000);
+
+// Poll immediately on startup (after 2 seconds to let ESP32 boot)
+setTimeout(pollTemperature, 2000);
 
 // ── REST endpoints ────────────────────────────────────────────────────────────
 app.get('/api/info', (_req, res) => {
@@ -173,6 +248,65 @@ app.get('/api/temp', async (_req, res) => {
         res.json(data);
     } catch (err) {
         res.status(503).json({ ok: false, message: `ESP32 unreachable -- ${err.message}` });
+    }
+});
+
+// ── Temperature history endpoints ─────────────────────────────────────────────
+app.get('/api/temperature/history', (req, res) => {
+    const hours = parseInt(req.query.hours) || 24;
+    const limit = parseInt(req.query.limit) || 1000;
+    
+    try {
+        const readings = db.getRecentReadings({ hours, limit });
+        res.json({ ok: true, count: readings.length, readings });
+    } catch (err) {
+        console.error('[api] /temperature/history error:', err);
+        res.status(500).json({ ok: false, message: err.message });
+    }
+});
+
+app.get('/api/temperature/latest', (_req, res) => {
+    try {
+        const latest = db.getLatestReadings();
+        res.json({ ok: true, readings: latest });
+    } catch (err) {
+        console.error('[api] /temperature/latest error:', err);
+        res.status(500).json({ ok: false, message: err.message });
+    }
+});
+
+app.get('/api/temperature/stats/:unitId', (req, res) => {
+    const { unitId } = req.params;
+    const hours = parseInt(req.query.hours) || 24;
+    
+    if (!['a', 'b', 'c'].includes(unitId)) {
+        return res.status(400).json({ ok: false, message: 'unitId must be a, b, or c' });
+    }
+    
+    try {
+        const stats = db.getUnitStats(unitId, hours);
+        res.json({ ok: true, unitId, hours, stats });
+    } catch (err) {
+        console.error(`[api] /temperature/stats/${unitId} error:`, err);
+        res.status(500).json({ ok: false, message: err.message });
+    }
+});
+
+app.get('/api/temperature/unit/:unitId', (req, res) => {
+    const { unitId } = req.params;
+    const hours = parseInt(req.query.hours) || 24;
+    const limit = parseInt(req.query.limit) || 500;
+    
+    if (!['a', 'b', 'c'].includes(unitId)) {
+        return res.status(400).json({ ok: false, message: 'unitId must be a, b, or c' });
+    }
+    
+    try {
+        const readings = db.getUnitReadings(unitId, { hours, limit });
+        res.json({ ok: true, unitId, count: readings.length, readings });
+    } catch (err) {
+        console.error(`[api] /temperature/unit/${unitId} error:`, err);
+        res.status(500).json({ ok: false, message: err.message });
     }
 });
 

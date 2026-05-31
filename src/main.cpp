@@ -20,7 +20,10 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <Preferences.h>
 #include "credentials.h"
+
+Preferences prefs;
 
 #ifndef ESPNOW_CHANNEL
 #define ESPNOW_CHANNEL 11   // must match Unit A's router channel
@@ -32,6 +35,7 @@
 struct __attribute__((packed)) ColorPacket { uint8_t r, g, b; };
 struct __attribute__((packed)) TempPacket  { float   temp_c; uint8_t humidity; };
 struct __attribute__((packed)) PingPacket  { uint8_t magic;  uint8_t seq; };
+struct __attribute__((packed)) SyncPacket  { uint8_t magic;  uint8_t cmd; }; // magic=0xCC, cmd: 1=read_now
 
 // ============================================================================
 // COMMON: bring up WiFi STA + lock channel (used by both roles)
@@ -98,6 +102,31 @@ static unsigned long _rssiB_time = 0;
 static int8_t        _rssiC_atA  = 0;
 static unsigned long _rssiC_time = 0;
 
+// ---- Calibration offsets (persistent in NVS) ----
+static float _calOffset_A = 0.0f;  // offset for Unit A
+static float _calOffset_B = 0.0f;  // offset for Unit B
+static float _calOffset_C = 0.0f;  // offset for Unit C
+
+static void loadCalibration() {
+    prefs.begin("espnow", true); // read-only
+    _calOffset_A = prefs.getFloat("cal_a", 0.0f);
+    _calOffset_B = prefs.getFloat("cal_b", 0.0f);
+    _calOffset_C = prefs.getFloat("cal_c", 0.0f);
+    prefs.end();
+    Serial.printf("[cal] Loaded: A=%.2f, B=%.2f, C=%.2f\n", 
+                  _calOffset_A, _calOffset_B, _calOffset_C);
+}
+
+static void saveCalibration() {
+    prefs.begin("espnow", false); // read-write
+    prefs.putFloat("cal_a", _calOffset_A);
+    prefs.putFloat("cal_b", _calOffset_B);
+    prefs.putFloat("cal_c", _calOffset_C);
+    prefs.end();
+    Serial.printf("[cal] Saved: A=%.2f, B=%.2f, C=%.2f\n", 
+                  _calOffset_A, _calOffset_B, _calOffset_C);
+}
+
 // ---- WiFi watchdog ----
 static unsigned long _lastWifiCheck = 0;
 static unsigned long _wifiDownSince = 0;
@@ -130,15 +159,17 @@ static void onReceive(const esp_now_recv_info_t *info, const uint8_t *data, int 
     if (len == (int)sizeof(TempPacket)) {
         TempPacket pkt; memcpy(&pkt, data, sizeof(pkt));
         if (isB) {
-            _tempB_c    = pkt.temp_c;
+            _tempB_c    = pkt.temp_c + _calOffset_B;  // Apply calibration
             _humB       = pkt.humidity;
             _tempB_time = millis();
-            Serial.printf("[recv B] temp=%.1fC hum=%d%%\n", pkt.temp_c, pkt.humidity);
+            Serial.printf("[recv B] raw=%.1fC cal=%.1fC hum=%d%%\n", 
+                         pkt.temp_c, _tempB_c, pkt.humidity);
         } else if (isC) {
-            _tempC_c    = pkt.temp_c;
+            _tempC_c    = pkt.temp_c + _calOffset_C;  // Apply calibration
             _humC       = pkt.humidity;
             _tempC_time = millis();
-            Serial.printf("[recv C] temp=%.1fC hum=%d%%\n", pkt.temp_c, pkt.humidity);
+            Serial.printf("[recv C] raw=%.1fC cal=%.1fC hum=%d%%\n", 
+                         pkt.temp_c, _tempC_c, pkt.humidity);
         }
     } else if (len == (int)sizeof(PingPacket)) {
         PingPacket pkt; memcpy(&pkt, data, sizeof(pkt));
@@ -163,9 +194,20 @@ static void readLocalTemp() {
         Serial.println("[A] DHT22 read failed");
         return;
     }
-    _tempA_c    = t;
+    _tempA_c    = t + _calOffset_A;  // Apply calibration
     _humA       = (uint8_t)(h + 0.5f);
     _tempA_time = millis();
+    Serial.printf("[A] raw=%.1fC cal=%.1fC hum=%d%%\n", t, _tempA_c, _humA);
+}
+
+// ---- Broadcast sync command ----
+static void broadcastSyncRead() {
+    SyncPacket sync = { 0xCC, 1 };  // cmd=1 means "read now"
+    esp_now_send(RECEIVER_B_MAC, (uint8_t *)&sync, sizeof(sync));
+    esp_now_send(RECEIVER_C_MAC, (uint8_t *)&sync, sizeof(sync));
+    Serial.println("[A] Broadcast SYNC READ");
+    delay(50);  // Give units time to process
+    readLocalTemp();  // Unit A reads too
 }
 
 // ---- HTTP handlers ----
@@ -259,6 +301,54 @@ static void handleRssi() {
     server.send(200, "application/json", buf);
 }
 
+static void handleSync() {
+    broadcastSyncRead();
+    server.send(200, "text/plain", "sync read triggered");
+}
+
+static void handleSetCal() {
+    // /set_cal?unit=a&offset=0.5
+    if (!server.hasArg("unit") || !server.hasArg("offset")) {
+        server.send(400, "text/plain", "missing unit or offset");
+        return;
+    }
+    String unit = server.arg("unit");
+    float offset = server.arg("offset").toFloat();
+    
+    if (unit == "a") {
+        _calOffset_A = offset;
+    } else if (unit == "b") {
+        _calOffset_B = offset;
+    } else if (unit == "c") {
+        _calOffset_C = offset;
+    } else {
+        server.send(400, "text/plain", "invalid unit (use a, b, or c)");
+        return;
+    }
+    
+    saveCalibration();
+    server.send(200, "text/plain", "calibration saved");
+}
+
+static void handleGetCal() {
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+        "{\"ok\":true,"
+         "\"cal_a\":%.2f,"
+         "\"cal_b\":%.2f,"
+         "\"cal_c\":%.2f}",
+        _calOffset_A, _calOffset_B, _calOffset_C);
+    server.send(200, "application/json", buf);
+}
+
+static void handleResetCal() {
+    _calOffset_A = 0.0f;
+    _calOffset_B = 0.0f;
+    _calOffset_C = 0.0f;
+    saveCalibration();
+    server.send(200, "text/plain", "calibration reset to zero");
+}
+
 void setup() {
     Serial.begin(115200);
     delay(500);
@@ -268,6 +358,8 @@ void setup() {
     rgbLedWrite(LED_PIN, 0, 0, 0);
 
     dht.begin();
+    
+    loadCalibration();  // Load persistent calibration offsets
 
     initEspNowWiFi(true);
 
@@ -295,19 +387,24 @@ void setup() {
     server.on("/temp",      handleTempC);   // alias for Unit C
     server.on("/temp_c",    handleTempC);
     server.on("/rssi",      handleRssi);
+    server.on("/sync",      handleSync);
+    server.on("/set_cal",   handleSetCal);
+    server.on("/get_cal",   handleGetCal);
+    server.on("/reset_cal", handleResetCal);
     server.begin();
 
     Serial.println("HTTP server ready");
+    Serial.println("Endpoints: /sync /set_cal?unit=a&offset=0.5 /get_cal /reset_cal");
 }
 
 void loop() {
     server.handleClient();
     checkWiFi();
 
-    static unsigned long lastTemp = 0;
-    if (millis() - lastTemp > 15000) {
-        lastTemp = millis();
-        readLocalTemp();
+    static unsigned long lastSync = 0;
+    if (millis() - lastSync > 30000) {  // Sync every 30 seconds
+        lastSync = millis();
+        broadcastSyncRead();
     }
     delay(5);
 }
@@ -336,11 +433,20 @@ static unsigned long _lastPing     = 0;
 static uint8_t       _pingSeq      = 0;
 static unsigned long _lastTempSend = 0;
 
+// Forward declaration
+static void sendTemp();
+
 static void onReceive(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
     if (len == (int)sizeof(ColorPacket)) {
         ColorPacket pkt; memcpy(&pkt, data, sizeof(pkt));
         rgbLedWrite(LED_PIN, pkt.r, pkt.g, pkt.b);
         Serial.printf("[B] RGB(%d,%d,%d)\n", pkt.r, pkt.g, pkt.b);
+    } else if (len == (int)sizeof(SyncPacket)) {
+        SyncPacket pkt; memcpy(&pkt, data, sizeof(pkt));
+        if (pkt.magic == 0xCC && pkt.cmd == 1) {
+            Serial.println("[B] SYNC received — reading now");
+            sendTemp();
+        }
     }
 }
 
@@ -394,8 +500,7 @@ void setup() {
     peer.encrypt = false;
     if (esp_now_add_peer(&peer) != ESP_OK) { Serial.println("Add peer A FAILED"); return; }
 
-    Serial.printf("Ready — pings every %lums, temp every %lus\n",
-        PING_INTERVAL_MS, TEMP_INTERVAL_MS / 1000);
+    Serial.printf("Ready — pings every %lums, temp on SYNC command\n", PING_INTERVAL_MS);
 }
 
 void loop() {
@@ -407,10 +512,7 @@ void loop() {
         esp_now_send(SENDER_MAC, (uint8_t *)&ping, sizeof(ping));
     }
 
-    if (now - _lastTempSend >= TEMP_INTERVAL_MS) {
-        _lastTempSend = now;
-        sendTemp();
-    }
+    // Temperature now sent only on SYNC command (no automatic sending)
 
     delay(10);
 }
@@ -437,11 +539,20 @@ static unsigned long _lastPing     = 0;
 static uint8_t       _pingSeq      = 0;
 static unsigned long _lastTempSend = 0;
 
+// Forward declaration
+static void sendTemp();
+
 static void onReceive(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
     if (len == (int)sizeof(ColorPacket)) {
         ColorPacket pkt; memcpy(&pkt, data, sizeof(pkt));
         rgbLedWrite(LED_PIN, pkt.r, pkt.g, pkt.b);
         Serial.printf("[C] RGB(%d,%d,%d)\n", pkt.r, pkt.g, pkt.b);
+    } else if (len == (int)sizeof(SyncPacket)) {
+        SyncPacket pkt; memcpy(&pkt, data, sizeof(pkt));
+        if (pkt.magic == 0xCC && pkt.cmd == 1) {
+            Serial.println("[C] SYNC received — reading now");
+            sendTemp();
+        }
     }
 }
 
@@ -480,8 +591,7 @@ void setup() {
     peer.encrypt = false;
     if (esp_now_add_peer(&peer) != ESP_OK) { Serial.println("Add peer A FAILED"); return; }
 
-    Serial.printf("Ready — pings every %lums, temp every %lus\n",
-        PING_INTERVAL_MS, TEMP_INTERVAL_MS / 1000);
+    Serial.printf("Ready — pings every %lums, temp on SYNC command\n", PING_INTERVAL_MS);
 }
 
 void loop() {
@@ -493,10 +603,7 @@ void loop() {
         esp_now_send(SENDER_MAC, (uint8_t *)&ping, sizeof(ping));
     }
 
-    if (now - _lastTempSend >= TEMP_INTERVAL_MS) {
-        _lastTempSend = now;
-        sendTemp();
-    }
+    // Temperature now sent only on SYNC command (no automatic sending)
 
     delay(10);
 }
