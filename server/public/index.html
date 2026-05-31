@@ -686,6 +686,23 @@ function TemperatureGraph({ history }) {
     const dataB = points.map(p => p.b !== null ? (p.b * 9/5 + 32) : null);
     const dataC = points.map(p => p.c !== null ? (p.c * 9/5 + 32) : null);
 
+    // Calculate dynamic Y-axis range: default 60-100, expand ±5 if needed, round to nearest 5
+    const allTemps = [...dataA, ...dataB, ...dataC].filter(t => t !== null);
+    let yMin = 60;
+    let yMax = 100;
+    if (allTemps.length > 0) {
+      const minTemp = Math.min(...allTemps);
+      const maxTemp = Math.max(...allTemps);
+      // If data goes below 60, expand down by 5 and round to nearest 5
+      if (minTemp < 60) {
+        yMin = Math.floor((minTemp - 5) / 5) * 5;
+      }
+      // If data goes above 100, expand up by 5 and round to nearest 5
+      if (maxTemp > 100) {
+        yMax = Math.ceil((maxTemp + 5) / 5) * 5;
+      }
+    }
+
     // Destroy old chart if exists
     if (chartRef.current) {
       chartRef.current.destroy();
@@ -793,8 +810,8 @@ function TemperatureGraph({ history }) {
               },
             },
             y: {
-              min: 20,
-              max: 110,
+              min: yMin,
+              max: yMax,
               title: {
                 display: true,
                 text: 'Temperature (°F)',
@@ -805,7 +822,7 @@ function TemperatureGraph({ history }) {
               },
               ticks: {
                 color: '#888',
-                stepSize: 10,
+                stepSize: 5,
                 callback: function(value) {
                   return value.toFixed(0) + '°';
                 }
