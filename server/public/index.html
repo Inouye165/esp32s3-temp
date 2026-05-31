@@ -4,30 +4,67 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ESP32 Mesh Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     background: #141414; color: #e0e0e0;
     font-family: "Segoe UI", system-ui, sans-serif;
     display: flex; flex-direction: column; align-items: center;
-    min-height: 100vh; padding: 24px 16px;
+    height: 100vh; overflow: hidden; padding: 12px 16px;
   }
-  h1 { font-size: 1.3rem; letter-spacing: .06em; margin-bottom: 20px; color: #fff; }
+  h1 { font-size: 1.1rem; letter-spacing: .06em; margin-bottom: 10px; color: #fff; }
+  
+  /* ── tabs ── */
+  .tabs {
+    display: flex; gap: 4px; margin-bottom: 10px; width: 100%; max-width: 1200px;
+    border-bottom: 1px solid #2c2c2c;
+  }
+  .tab-btn {
+    padding: 8px 16px; background: #1a1a1a; border: none; color: #888;
+    cursor: pointer; font-size: .85rem; border-radius: 6px 6px 0 0;
+    transition: all .15s; border: 1px solid transparent; border-bottom: none;
+  }
+  .tab-btn:hover { background: #222; color: #aaa; }
+  .tab-btn.active {
+    background: #252525; color: #7ecfff; font-weight: 600;
+    border-color: #2c2c2c; border-bottom: 2px solid #7ecfff;
+  }
+  .tab-content {
+    width: 100%; flex: 1; overflow-y: auto;
+    padding: 12px 0;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
 
   /* ── grid ── */
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 16px; width: 100%; max-width: 960px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px; width: 100%;
   }
 
+  /* ── compact status row ── */
+  .status-row {
+    display: flex; gap: 12px; width: 100%; margin-bottom: 10px;
+    flex-wrap: wrap; align-items: center; font-size: .78rem;
+  }
+  .status-box {
+    background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 8px;
+    padding: 8px 12px; display: flex; align-items: center; gap: 8px;
+    flex: 1; min-width: 200px;
+  }
+  .status-label { color: #555; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; }
+  .status-value { color: #7ecfff; font-weight: 600; font-family: monospace; }
+  
   /* ── unit card ── */
   .unit {
-    background: #1e1e1e; border: 1px solid #2c2c2c; border-radius: 12px;
-    padding: 18px; display: flex; flex-direction: column; gap: 12px;
+    background: #1e1e1e; border: 1px solid #2c2c2c; border-radius: 10px;
+    padding: 12px; display: flex; flex-direction: column; gap: 8px;
     transition: all .3s ease;
     position: relative;
   }
@@ -70,9 +107,26 @@
     border: 1px solid #444; background: #000; flex-shrink: 0;
     transition: background .15s;
   }
-  .unit-label { font-weight: 600; font-size: 1rem; }
-  .unit-mac { font-size: .7rem; color: #888; letter-spacing: .04em; margin-top: 2px; }
-  .unit-ip { font-size: .75rem; color: #5fdb8a; letter-spacing: .03em; margin-top: 3px; font-family: monospace; }
+  .unit-label { font-weight: 600; font-size: .9rem; }
+  .unit-mac { font-size: .65rem; color: #888; letter-spacing: .04em; margin-top: 2px; }
+  .unit-ip { font-size: .7rem; color: #5fdb8a; letter-spacing: .03em; margin-top: 2px; font-family: monospace; }
+  
+  /* ── compact color controls ── */
+  .color-toggle {
+    background: #252525; border: 1px solid #333; border-radius: 6px;
+    padding: 5px 10px; color: #888; font-size: .75rem; cursor: pointer;
+    transition: all .15s; display: flex; align-items: center; gap: 6px;
+  }
+  .color-toggle:hover { background: #2d2d2d; color: #aaa; }
+  .color-toggle-indicator {
+    width: 16px; height: 16px; border-radius: 4px; border: 1px solid #444;
+  }
+  .color-section {
+    max-height: 0; overflow: hidden; transition: max-height .3s ease;
+  }
+  .color-section.open {
+    max-height: 150px;
+  }
 
   /* ── colour picker ── */
   .picker-row { display: flex; align-items: center; gap: 10px; }
@@ -143,41 +197,38 @@
 
   /* ── signal panel ── */
   .signal-panel {
-    width: 100%; max-width: 960px; margin-top: 16px;
-    background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 12px;
-    padding: 16px 20px;
+    background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 8px;
+    padding: 8px 12px; flex: 1; min-width: 300px;
   }
   .panel-title {
-    font-size: .72rem; color: #555; letter-spacing: .1em;
-    text-transform: uppercase; margin-bottom: 14px;
-    display: flex; align-items: center; gap: 8px;
+    font-size: .7rem; color: #555; letter-spacing: .08em;
+    text-transform: uppercase; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 6px;
   }
   .ws-dot {
-    width: 7px; height: 7px; border-radius: 50%;
+    width: 6px; height: 6px; border-radius: 50%;
     display: inline-block; transition: background .4s;
   }
-  .ws-dot.connected    { background: #4ade80; box-shadow: 0 0 6px #4ade8099; }
+  .ws-dot.connected    { background: #4ade80; box-shadow: 0 0 5px #4ade8099; }
   .ws-dot.disconnected { background: #555; }
 
-  .signal-rows { display: flex; flex-direction: column; gap: 10px; }
+  .signal-rows { display: flex; gap: 12px; flex-wrap: wrap; }
   .signal-row {
-    display: grid;
-    grid-template-columns: 100px 90px 80px 1fr;
-    align-items: center; gap: 10px;
+    display: flex; align-items: center; gap: 6px; font-size: .75rem;
   }
-  .signal-row-label { font-size: .82rem; color: #aaa; }
-  .signal-bars { display: flex; align-items: flex-end; gap: 3px; height: 22px; }
+  .signal-row-label { color: #888; min-width: 50px; }
+  .signal-bars { display: flex; align-items: flex-end; gap: 2px; height: 16px; }
   .bar {
     border-radius: 2px; background: #333; transition: background .35s;
     flex-shrink: 0;
   }
-  .bar-1 { width: 7px; height:  6px; }
-  .bar-2 { width: 7px; height:  9px; }
-  .bar-3 { width: 7px; height: 12px; }
-  .bar-4 { width: 7px; height: 16px; }
-  .bar-5 { width: 7px; height: 20px; }
-  .signal-dbm  { font-size: .88rem; font-weight: 700; font-family: monospace; }
-  .signal-qual { font-size: .72rem; color: #666; }
+  .bar-1 { width: 5px; height:  4px; }
+  .bar-2 { width: 5px; height:  6px; }
+  .bar-3 { width: 5px; height:  8px; }
+  .bar-4 { width: 5px; height: 12px; }
+  .bar-5 { width: 5px; height: 14px; }
+  .signal-dbm  { font-size: .75rem; font-weight: 600; font-family: monospace; }
+  .signal-qual { font-size: .68rem; color: #666; }
 
   /* ── sensor chip ── */
   .unit-sensor-chip {
@@ -199,46 +250,72 @@
 
   /* ── sync panel ── */
   .sync-panel {
-    width: 100%; max-width: 960px; margin-top: 16px;
-    background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 12px;
-    padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;
+    background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 8px;
+    padding: 8px 12px; flex: 1; min-width: 300px;
   }
-  .sync-rows { display: flex; flex-direction: column; gap: 8px; }
+  .sync-rows { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
   .sync-row {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 5px 0; border-bottom: 1px solid #222;
+    display: flex; align-items: center; gap: 8px;
   }
-  .sync-row:last-child { border-bottom: none; }
-  .sync-check { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: .88rem; }
-  .sync-check input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color: #2d5af5; }
+  .sync-check { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: .75rem; }
+  .sync-check input[type=checkbox] { width: 14px; height: 14px; cursor: pointer; accent-color: #2d5af5; }
   .sync-check input[type=checkbox]:disabled { cursor: not-allowed; }
   .sync-unit-name { font-weight: 600; color: #ccc; }
   .sync-sensor-tag {
-    font-size: .68rem; color: #5fdb8a; background: #0d2b1a;
-    border-radius: 4px; padding: 2px 7px; letter-spacing: .04em;
+    font-size: .65rem; color: #5fdb8a; background: #0d2b1a;
+    border-radius: 4px; padding: 2px 6px; letter-spacing: .04em;
   }
-  .sync-disp-temp { font-size: 1rem; font-weight: 700; color: #7ecfff; font-family: monospace; min-width: 80px; text-align: right; }
+  .sync-disp-temp { font-size: .85rem; font-weight: 600; color: #7ecfff; font-family: monospace; }
   .sync-btn {
-    width: 100%; padding: 9px; border: 1px solid #2d7a3e; border-radius: 8px;
-    background: #1d4e2a; color: #5fdb8a; font-weight: 600; font-size: .95rem;
+    padding: 6px 12px; border: 1px solid #2d7a3e; border-radius: 6px;
+    background: #1d4e2a; color: #5fdb8a; font-weight: 600; font-size: .75rem;
     cursor: pointer; transition: background .15s;
   }
   .sync-btn:hover:not(:disabled) { background: #25623a; }
   .sync-btn:disabled { opacity: .4; cursor: default; }
-  .sync-hint { font-size: .72rem; color: #555; text-align: center; }
+  .sync-hint { font-size: .68rem; color: #555; }
 
   /* ── log ── */
   .log-wrap {
-    width: 100%; max-width: 960px; margin-top: 16px;
-    background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 10px;
-    padding: 14px;
+    width: 100%; background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 8px;
+    padding: 12px; height: calc(100vh - 180px); overflow: hidden; display: flex; flex-direction: column;
   }
-  .log-title { font-size: .72rem; color: #555; margin-bottom: 8px; letter-spacing: .08em; text-transform: uppercase; }
-  .log-list { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
-  .log-entry { font-size: .76rem; color: #888; font-family: monospace; }
+  .log-title { font-size: .7rem; color: #555; margin-bottom: 8px; letter-spacing: .08em; text-transform: uppercase; }
+  .log-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+  .log-entry { font-size: .72rem; color: #888; font-family: monospace; }
   .log-entry .ts  { color: #555; }
   .log-entry.ok  .msg { color: #5fdb8a; }
   .log-entry.err .msg { color: #f07070; }
+
+  /* ── temperature graph ── */
+  .temp-graph-panel {
+    width: 100%; background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 8px;
+    padding: 20px; height: calc(100vh - 180px); overflow: hidden; display: flex; flex-direction: column;
+  }
+  .temp-graph-title {
+    font-size: .7rem; color: #555; letter-spacing: .08em;
+    text-transform: uppercase; margin-bottom: 8px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .temp-graph-controls {
+    display: flex; gap: 6px; font-size: .72rem;
+  }
+  .temp-graph-btn {
+    padding: 4px 8px; border: 1px solid #333; border-radius: 5px;
+    background: #252525; color: #aaa; cursor: pointer;
+    transition: all .15s;
+  }
+  .temp-graph-btn:hover { background: #2d2d2d; border-color: #444; }
+  .temp-graph-btn.active {
+    background: #2d5af5; color: #fff; border-color: #2d5af5;
+  }
+  .temp-graph-canvas {
+    flex: 1; width: 100%; position: relative;
+  }
+  .temp-graph-loading {
+    display: flex; align-items: center; justify-content: center;
+    height: 100%; color: #555; font-size: .85rem;
+  }
 </style>
 </head>
 <body>
@@ -257,6 +334,7 @@ const INIT = {
   tempA:       null,
   tempB:       null,
   tempC:       null,
+  tempHistory: [],
   log:         [],
   info:        {},
   wsConnected: false,
@@ -279,6 +357,7 @@ function reducer(s, a) {
     case 'TEMP_A': return { ...s, tempA: a.data };
     case 'TEMP_B': return { ...s, tempB: a.data };
     case 'TEMP_C': return { ...s, tempC: a.data };
+    case 'TEMP_HISTORY': return { ...s, tempHistory: a.data };
     case 'LOG':    return { ...s, log: [a.entry, ...s.log].slice(0, 80) };
     case 'INFO':   return { ...s, info: a.data };
     case 'WS':     return { ...s, wsConnected: a.ok };
@@ -338,7 +417,13 @@ function useRssiWS(dispatch) {
       ws.onmessage = e => {
         try {
           const msg = JSON.parse(e.data);
-          if (msg.type === 'rssi') dispatch({ type: 'RSSI', data: msg.data });
+          if (msg.type === 'rssi') {
+            dispatch({ type: 'RSSI', data: msg.data });
+          } else if (msg.type === 'temperature') {
+            // New temperature reading logged - refresh history
+            // We'll trigger a fetch in the component that listens for this
+            console.log('[ws] New temperature reading logged', msg.data);
+          }
         } catch (_) {}
       };
     }
@@ -517,9 +602,277 @@ function ActivityLog({ entries }) {
   );
 }
 
+// ── TemperatureGraph ──────────────────────────────────────────────────────────
+function TemperatureGraph({ history }) {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+  const [timeRange, setTimeRange] = useState(6); // hours
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [readings, setReadings] = useState([]);
+
+  // Fetch data when timeRange changes
+  useEffect(() => {
+    async function fetchHistory() {
+      setLoading(true);
+      setError(null);
+      try {
+        console.log('[graph] Fetching temperature history for', timeRange, 'hours');
+        const response = await fetch(`/api/temperature/history?hours=${timeRange}&limit=1000`);
+        const data = await response.json();
+        console.log('[graph] Received data:', data.ok, 'count:', data.count);
+        if (data.ok && data.readings) {
+          setReadings(data.readings);
+        } else {
+          setError('No data available');
+          setReadings([]);
+        }
+      } catch (err) {
+        console.error('[graph] Failed to fetch history:', err);
+        setError(err.message);
+        setReadings([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchHistory();
+
+    // Refresh every minute
+    const interval = setInterval(fetchHistory, 60000);
+    return () => clearInterval(interval);
+  }, [timeRange]);
+
+  // Update chart when readings or canvas ref changes
+  useEffect(() => {
+    if (!loading && readings.length > 0 && canvasRef.current) {
+      console.log('[graph] Canvas ready, creating chart with', readings.length, 'readings');
+      updateChart(readings);
+    }
+  }, [readings, loading]);
+
+  function updateChart(readings) {
+    if (!canvasRef.current) {
+      console.log('[graph] Canvas ref not ready');
+      return;
+    }
+    
+    if (!readings || readings.length === 0) {
+      console.log('[graph] No readings to display');
+      setError('No temperature data recorded yet');
+      return;
+    }
+
+    console.log('[graph] Updating chart with', readings.length, 'readings');
+
+    // Group readings by timestamp
+    const byTimestamp = {};
+    readings.forEach(r => {
+      if (!byTimestamp[r.timestamp]) {
+        byTimestamp[r.timestamp] = { timestamp: r.timestamp, a: null, b: null, c: null };
+      }
+      byTimestamp[r.timestamp][r.unit_id] = r.temp_c;
+    });
+
+    const points = Object.values(byTimestamp).sort((x, y) => x.timestamp - y.timestamp);
+    console.log('[graph] Grouped into', points.length, 'time points');
+
+    // Convert to chart format
+    const labels = points.map(p => {
+      const d = new Date(p.timestamp * 1000);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    });
+
+    const dataA = points.map(p => p.a !== null ? (p.a * 9/5 + 32) : null);
+    const dataB = points.map(p => p.b !== null ? (p.b * 9/5 + 32) : null);
+    const dataC = points.map(p => p.c !== null ? (p.c * 9/5 + 32) : null);
+
+    // Destroy old chart if exists
+    if (chartRef.current) {
+      chartRef.current.destroy();
+      chartRef.current = null;
+    }
+
+    // Check if Chart.js is loaded
+    if (typeof Chart === 'undefined') {
+      console.error('[graph] Chart.js not loaded!');
+      setError('Chart library not loaded');
+      return;
+    }
+
+    // Create new chart
+    try {
+      const ctx = canvasRef.current.getContext('2d');
+      chartRef.current = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Unit A (DHT22)',
+              data: dataA,
+              borderColor: '#7ecfff',
+              backgroundColor: 'rgba(126, 207, 255, 0.1)',
+              borderWidth: 2,
+              pointRadius: 3,
+              pointHoverRadius: 5,
+              tension: 0.3,
+              spanGaps: true,
+            },
+            {
+              label: 'Unit B (SHT30)',
+              data: dataB,
+              borderColor: '#5fdb8a',
+              backgroundColor: 'rgba(95, 219, 138, 0.1)',
+              borderWidth: 2,
+              pointRadius: 3,
+              pointHoverRadius: 5,
+              tension: 0.3,
+              spanGaps: true,
+            },
+            {
+              label: 'Unit C (DHT11)',
+              data: dataC,
+              borderColor: '#facc15',
+              backgroundColor: 'rgba(250, 204, 21, 0.1)',
+              borderWidth: 2,
+              pointRadius: 3,
+              pointHoverRadius: 5,
+              tension: 0.3,
+              spanGaps: true,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false,
+          },
+          plugins: {
+            legend: {
+              position: 'top',
+              labels: {
+                color: '#aaa',
+                font: { size: 12 },
+                usePointStyle: true,
+                padding: 15,
+              },
+            },
+            tooltip: {
+              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+              titleColor: '#fff',
+              bodyColor: '#ccc',
+              borderColor: '#444',
+              borderWidth: 1,
+              padding: 10,
+              displayColors: true,
+              callbacks: {
+                label: function(context) {
+                  let label = context.dataset.label || '';
+                  if (label) label += ': ';
+                  if (context.parsed.y !== null) {
+                    label += context.parsed.y.toFixed(1) + ' °F';
+                  } else {
+                    label += 'No data';
+                  }
+                  return label;
+                }
+              }
+            },
+          },
+          scales: {
+            x: {
+              grid: {
+                color: '#2a2a2a',
+              },
+              ticks: {
+                color: '#888',
+                maxRotation: 45,
+                minRotation: 0,
+              },
+            },
+            y: {
+              min: 20,
+              max: 110,
+              title: {
+                display: true,
+                text: 'Temperature (°F)',
+                color: '#aaa',
+              },
+              grid: {
+                color: '#2a2a2a',
+              },
+              ticks: {
+                color: '#888',
+                stepSize: 10,
+                callback: function(value) {
+                  return value.toFixed(0) + '°';
+                }
+              },
+            },
+          },
+        },
+      });
+      console.log('[graph] Chart created successfully');
+      setError(null);
+    } catch (err) {
+      console.error('[graph] Error creating chart:', err);
+      setError('Failed to create chart: ' + err.message);
+    }
+  }
+
+  return (
+    <div className="temp-graph-panel">
+      <div className="temp-graph-title">
+        <span>Temperature History</span>
+        <div className="temp-graph-controls">
+          <button
+            className={'temp-graph-btn' + (timeRange === 1 ? ' active' : '')}
+            onClick={() => setTimeRange(1)}
+          >
+            1h
+          </button>
+          <button
+            className={'temp-graph-btn' + (timeRange === 6 ? ' active' : '')}
+            onClick={() => setTimeRange(6)}
+          >
+            6h
+          </button>
+          <button
+            className={'temp-graph-btn' + (timeRange === 24 ? ' active' : '')}
+            onClick={() => setTimeRange(24)}
+          >
+            24h
+          </button>
+          <button
+            className={'temp-graph-btn' + (timeRange === 168 ? ' active' : '')}
+            onClick={() => setTimeRange(168)}
+          >
+            7d
+          </button>
+        </div>
+      </div>
+      {loading ? (
+        <div className="temp-graph-loading">Loading temperature history...</div>
+      ) : error ? (
+        <div className="temp-graph-loading" style={{color: '#ea580c'}}>
+          {error}
+        </div>
+      ) : (
+        <div className="temp-graph-canvas">
+          <canvas ref={canvasRef}></canvas>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 function App() {
   const [state, dispatch] = useReducer(reducer, INIT);
+  const [activeTab, setActiveTab] = useState('controls');
+  const [colorExpanded, setColorExpanded] = useState({ a: false, b: false, c: false });
 
   // per-unit send state — kept outside reducer for simplicity
   const [statusA, setStatusA] = useState(null);
@@ -686,9 +1039,145 @@ function App() {
 
   const { rssi, colors, modeB, modeC, tempA, tempB, tempC, log, info, wsConnected, unitAReachable } = state;
 
+  // Helper to check if sync is possible
+  const canSync = () => {
+    const rawFs = {
+      a: tempA ? (tempA.temp_c * 9/5 + 32) : null,
+      b: tempB ? (tempB.temp_c * 9/5 + 32) : null,
+      c: tempC ? (tempC.temp_c * 9/5 + 32) : null,
+    };
+    const included = ['a','b','c'].filter(u => syncIncludes[u] && rawFs[u] !== null);
+    return included.length >= 2;
+  };
+
+  // Helper to render signal row
+  const renderSignalRow = (label, val) => {
+    if (val === null || val === undefined) {
+      return (
+        <div className="signal-row" key={label}>
+          <span className="signal-row-label">{label}</span>
+          <span className="signal-dbm">—</span>
+          <span className="signal-qual">no data</span>
+        </div>
+      );
+    }
+    // Extract rssi value if val is an object
+    const dbm = (typeof val === 'object' && val.rssi !== undefined) ? val.rssi : val;
+    let quality = 'excellent', color = '#4ade80';
+    if (dbm >= -50) { quality = 'excellent'; color = '#4ade80'; }
+    else if (dbm >= -60) { quality = 'good'; color = '#5fdb8a'; }
+    else if (dbm >= -70) { quality = 'fair'; color = '#facc15'; }
+    else { quality = 'weak'; color = '#ea580c'; }
+    return (
+      <div className="signal-row" key={label}>
+        <span className="signal-row-label">{label}</span>
+        <span className="signal-dbm" style={{ color }}>{dbm} dBm</span>
+        <span className="signal-qual">{quality}</span>
+      </div>
+    );
+  };
+
   return (
     <>
-      <div className="grid">
+      {/* ── TABS ── */}
+      <div className="tabs">
+        <button 
+          className={'tab-btn' + (activeTab === 'controls' ? ' active' : '')}
+          onClick={() => setActiveTab('controls')}
+        >
+          Controls
+        </button>
+        <button 
+          className={'tab-btn' + (activeTab === 'graph' ? ' active' : '')}
+          onClick={() => setActiveTab('graph')}
+        >
+          Temperature History
+        </button>
+        <button 
+          className={'tab-btn' + (activeTab === 'log' ? ' active' : '')}
+          onClick={() => setActiveTab('log')}
+        >
+          Activity Log
+        </button>
+      </div>
+
+      {/* ── TAB CONTENT ── */}
+      <div className="tab-content">
+        
+        {/* ── CONTROLS TAB ── */}
+        <div className={'tab-panel' + (activeTab === 'controls' ? ' active' : '')}>
+          
+          {/* Status row with calibration and signal */}
+          <div className="status-row">
+            <div className="sync-panel">
+              <div className="panel-title">Calibration Sync</div>
+              <div className="sync-rows">
+                <div className="sync-row">
+                  <label className="sync-check">
+                    <input
+                      type="checkbox"
+                      checked={syncIncludes.a}
+                      disabled={!tempA}
+                      onChange={() => toggleSyncInclude('a')}
+                    />
+                    <span className="sync-unit-name">A</span>
+                    <span className="sync-sensor-tag">{UNIT_SENSORS.a}</span>
+                  </label>
+                  <span className="sync-disp-temp">
+                    {tempA ? ((tempA.temp_c * 9/5 + 32) + (offsets.a || 0)).toFixed(1) + ' °F' : '—'}
+                  </span>
+                </div>
+                <div className="sync-row">
+                  <label className="sync-check">
+                    <input
+                      type="checkbox"
+                      checked={syncIncludes.b}
+                      disabled={!tempB}
+                      onChange={() => toggleSyncInclude('b')}
+                    />
+                    <span className="sync-unit-name">B</span>
+                    <span className="sync-sensor-tag">{UNIT_SENSORS.b}</span>
+                  </label>
+                  <span className="sync-disp-temp">
+                    {tempB ? ((tempB.temp_c * 9/5 + 32) + (offsets.b || 0)).toFixed(1) + ' °F' : '—'}
+                  </span>
+                </div>
+                <div className="sync-row">
+                  <label className="sync-check">
+                    <input
+                      type="checkbox"
+                      checked={syncIncludes.c}
+                      disabled={!tempC}
+                      onChange={() => toggleSyncInclude('c')}
+                    />
+                    <span className="sync-unit-name">C</span>
+                    <span className="sync-sensor-tag">{UNIT_SENSORS.c}</span>
+                  </label>
+                  <span className="sync-disp-temp">
+                    {tempC ? ((tempC.temp_c * 9/5 + 32) + (offsets.c || 0)).toFixed(1) + ' °F' : '—'}
+                  </span>
+                </div>
+                <button className="sync-btn" onClick={syncToAverage} disabled={!canSync()}>
+                  Sync
+                </button>
+              </div>
+            </div>
+            
+            <div className="signal-panel">
+              <div className="panel-title">
+                Signal Strength
+                <span className={'ws-dot ' + (wsConnected ? 'connected' : 'disconnected')} />
+              </div>
+              <div className="signal-rows">
+                {renderSignalRow('A ↔ WiFi', rssi.wifi)}
+                {renderSignalRow('A ↔ B', rssi.b)}
+                {renderSignalRow('A ↔ C', rssi.c)}
+              </div>
+            </div>
+          </div>
+
+          {/* Unit cards */}
+          <div className="grid">
 
         {/* ── UNIT A ── */}
         <div className="unit">
@@ -708,16 +1197,32 @@ function App() {
               </div>
             </div>
           </div>
-          <ColorPicker hex={colors.a} onChange={handleColorA} disabled={false} />
-          <button className="send-btn" disabled={busyA} onClick={handleSendA}>
-            Send to Unit A
-          </button>
-          <button className="off-btn" disabled={busyA} onClick={() => sendColor('a', 0, 0, 0, setBusyA, setStatusA)}>
-            Turn OFF
-          </button>
-          <div className={'status ' + (statusA ? (statusA.ok ? 'ok' : 'err') : '')}>
-            {statusA ? statusA.msg : ''}
+          
+          {/* Collapsible color control */}
+          <div 
+            className="color-toggle" 
+            onClick={() => setColorExpanded(prev => ({ ...prev, a: !prev.a }))}
+          >
+            <div className="color-toggle-indicator" style={{ background: colors.a }} />
+            <span>LED Color</span>
+            <span style={{ marginLeft: 'auto', fontSize: '.7rem' }}>
+              {colorExpanded.a ? '▼' : '▶'}
+            </span>
           </div>
+          
+          <div className={'color-section' + (colorExpanded.a ? ' open' : '')}>
+            <ColorPicker hex={colors.a} onChange={handleColorA} disabled={false} />
+            <button className="send-btn" disabled={busyA} onClick={handleSendA}>
+              Send to Unit A
+            </button>
+            <button className="off-btn" disabled={busyA} onClick={() => sendColor('a', 0, 0, 0, setBusyA, setStatusA)}>
+              Turn OFF
+            </button>
+            <div className={'status ' + (statusA ? (statusA.ok ? 'ok' : 'err') : '')}>
+              {statusA ? statusA.msg : ''}
+            </div>
+          </div>
+          
           <TempBadge data={tempA} offset={offsets.a} />
           <TempOffset value={offsets.a} onChange={v => setOffset('a', v)} />
         </div>
@@ -759,22 +1264,38 @@ function App() {
               Independent
             </label>
           </div>
-          <ColorPicker hex={colors.b}
-                       onChange={hex => dispatch({ type: 'COLOR', unit: 'b', hex })}
-                       disabled={modeB === 'match'} />
-          <button className="send-btn"
-                  disabled={busyB || modeB !== 'independent'}
-                  onClick={() => { const {r,g,b} = hexToRgb(colors.b); sendColor('b',r,g,b,setBusyB,setStatusB); }}>
-            Send to Unit B
-          </button>
-          <button className="off-btn"
-                  disabled={busyB || modeB !== 'independent'}
-                  onClick={() => sendColor('b', 0, 0, 0, setBusyB, setStatusB)}>
-            Turn OFF
-          </button>
-          <div className={'status ' + (statusB ? (statusB.ok ? 'ok' : 'err') : '')}>
-            {statusB ? statusB.msg : ''}
+          
+          {/* Collapsible color control */}
+          <div 
+            className="color-toggle" 
+            onClick={() => setColorExpanded(prev => ({ ...prev, b: !prev.b }))}
+          >
+            <div className="color-toggle-indicator" style={{ background: colors.b }} />
+            <span>LED Color</span>
+            <span style={{ marginLeft: 'auto', fontSize: '.7rem' }}>
+              {colorExpanded.b ? '▼' : '▶'}
+            </span>
           </div>
+          
+          <div className={'color-section' + (colorExpanded.b ? ' open' : '')}>
+            <ColorPicker hex={colors.b}
+                         onChange={hex => dispatch({ type: 'COLOR', unit: 'b', hex })}
+                         disabled={modeB === 'match'} />
+            <button className="send-btn"
+                    disabled={busyB || modeB !== 'independent'}
+                    onClick={() => { const {r,g,b} = hexToRgb(colors.b); sendColor('b',r,g,b,setBusyB,setStatusB); }}>
+              Send to Unit B
+            </button>
+            <button className="off-btn"
+                    disabled={busyB || modeB !== 'independent'}
+                    onClick={() => sendColor('b', 0, 0, 0, setBusyB, setStatusB)}>
+              Turn OFF
+            </button>
+            <div className={'status ' + (statusB ? (statusB.ok ? 'ok' : 'err') : '')}>
+              {statusB ? statusB.msg : ''}
+            </div>
+          </div>
+          
           <TempBadge data={tempB} offset={offsets.b} />
           <TempOffset value={offsets.b} onChange={v => setOffset('b', v)} />
         </div>
@@ -816,42 +1337,55 @@ function App() {
               Independent
             </label>
           </div>
-          <ColorPicker hex={colors.c}
-                       onChange={hex => dispatch({ type: 'COLOR', unit: 'c', hex })}
-                       disabled={modeC === 'match'} />
-          <button className="send-btn"
-                  disabled={busyC || modeC !== 'independent'}
-                  onClick={() => { const {r,g,b} = hexToRgb(colors.c); sendColor('c',r,g,b,setBusyC,setStatusC); }}>
-            Send to Unit C
-          </button>
-          <button className="off-btn"
-                  disabled={busyC || modeC !== 'independent'}
-                  onClick={() => sendColor('c', 0, 0, 0, setBusyC, setStatusC)}>
-            Turn OFF
-          </button>
-          <div className={'status ' + (statusC ? (statusC.ok ? 'ok' : 'err') : '')}>
-            {statusC ? statusC.msg : ''}
+          
+          {/* Collapsible color control */}
+          <div 
+            className="color-toggle" 
+            onClick={() => setColorExpanded(prev => ({ ...prev, c: !prev.c }))}
+          >
+            <div className="color-toggle-indicator" style={{ background: colors.c }} />
+            <span>LED Color</span>
+            <span style={{ marginLeft: 'auto', fontSize: '.7rem' }}>
+              {colorExpanded.c ? '▼' : '▶'}
+            </span>
           </div>
+          
+          <div className={'color-section' + (colorExpanded.c ? ' open' : '')}>
+            <ColorPicker hex={colors.c}
+                         onChange={hex => dispatch({ type: 'COLOR', unit: 'c', hex })}
+                         disabled={modeC === 'match'} />
+            <button className="send-btn"
+                    disabled={busyC || modeC !== 'independent'}
+                    onClick={() => { const {r,g,b} = hexToRgb(colors.c); sendColor('c',r,g,b,setBusyC,setStatusC); }}>
+              Send to Unit C
+            </button>
+            <button className="off-btn"
+                    disabled={busyC || modeC !== 'independent'}
+                    onClick={() => sendColor('c', 0, 0, 0, setBusyC, setStatusC)}>
+              Turn OFF
+            </button>
+            <div className={'status ' + (statusC ? (statusC.ok ? 'ok' : 'err') : '')}>
+              {statusC ? statusC.msg : ''}
+            </div>
+          </div>
+          
           <TempBadge data={tempC} offset={offsets.c} />
           <TempOffset value={offsets.c} onChange={v => setOffset('c', v)} />
         </div>
 
+          </div> {/* end grid */}
+        </div> {/* end controls tab */}
+
+        {/* ── TEMPERATURE GRAPH TAB ── */}
+        <div className={'tab-panel' + (activeTab === 'graph' ? ' active' : '')}>
+          <TemperatureGraph history={state.tempHistory} />
+        </div>
+
+        {/* ── ACTIVITY LOG TAB ── */}
+        <div className={'tab-panel' + (activeTab === 'log' ? ' active' : '')}>
+          <ActivityLog entries={log} />
+        </div>
       </div>
-
-      {/* ── SYNC PANEL ── */}
-      <SyncPanel
-        tempA={tempA} tempB={tempB} tempC={tempC}
-        offsets={offsets}
-        includes={syncIncludes}
-        onToggle={toggleSyncInclude}
-        onSync={syncToAverage}
-      />
-
-      {/* ── SIGNAL PANEL ── */}
-      <SignalPanel rssi={rssi} wsConnected={wsConnected} />
-
-      {/* ── ACTIVITY LOG ── */}
-      <ActivityLog entries={log} />
     </>
   );
 }
