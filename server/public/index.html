@@ -1219,23 +1219,23 @@ function TempBadge({ data, offset = 0, unitId, calibratedTempC }) {
       </div>
     );
   }
-  if (data.temp_c <= -99) {
+  if (data.temp_c === null || data.ok === false || data.temp_c <= -99) {
     return (
       <div className="temp-display">
         <span className="no-data" style={{color:'var(--md-sys-color-error)'}}>
           <span className="material-symbols-outlined" style={{verticalAlign:'middle', marginRight:'4px'}}>warning</span>
-          Sensor error - unit online
+          Sensor error
         </span>
       </div>
     );
   }
   
-  const displayF = ((data.temp_c * 9 / 5 + 32) + offset).toFixed(1);
+  const displayF = data.temp_c != null ? ((data.temp_c * 9 / 5 + 32) + offset).toFixed(1) : '—';
   const age = data.age < 60 ? data.age + 's ago' : Math.floor(data.age / 60) + 'm ago';
   
   // If calibration is available, show calibrated value
   const hasCal = calibratedTempC !== null && calibratedTempC !== undefined && calibratedTempC !== data.temp_c;
-  const calF = hasCal ? (calibratedTempC * 9 / 5 + 32).toFixed(1) : null;
+  const calF = hasCal && calibratedTempC != null ? (calibratedTempC * 9 / 5 + 32).toFixed(1) : null;
   
   return (
     <div className="temp-display">
@@ -1499,7 +1499,7 @@ function TemperatureGraph() {
                 label: function(context) {
                   let label = context.dataset.label || '';
                   if (label) label += ': ';
-                  if (context.parsed.y !== null) {
+                  if (context.parsed.y != null) {
                     label += context.parsed.y.toFixed(1) + '°F';
                   } else {
                     label += 'No data';
@@ -2046,7 +2046,7 @@ function CalibrationPanel() {
             <span style={{ fontSize: '0.75rem', color: 'var(--md-sys-color-on-surface-variant)' }}>
               {bootstrapInfo
                 ? (bootstrapInfo.numPaired > 0 && bootstrapInfo.truthRangeF
-                  ? `${bootstrapInfo.numPaired} triplets, range ${bootstrapInfo.truthRangeF.min.toFixed(1)}–{bootstrapInfo.truthRangeF.max.toFixed(1)}°F`
+                  ? `${bootstrapInfo.numPaired} triplets, range ${bootstrapInfo.truthRangeF?.min != null ? bootstrapInfo.truthRangeF.min.toFixed(1) : '—'}–${bootstrapInfo.truthRangeF?.max != null ? bootstrapInfo.truthRangeF.max.toFixed(1) : '—'}°F`
                   : 'No paired readings found in DB')
                 : 'Inspecting DB...'}
             </span>
@@ -2155,7 +2155,7 @@ function CalibrationPanel() {
                 color: '#8be2a0',
                 border: '1px solid rgba(74,222,128,0.15)'
               }}>
-                ✓ Captured <strong>{lastCapture.label}</strong>: A={(lastCapture.means.a*9/5+32).toFixed(1)}°F | B={(lastCapture.means.b*9/5+32).toFixed(1)}°F | C={(lastCapture.means.c*9/5+32).toFixed(1)}°F (mean={(lastCapture.groupMean*9/5+32).toFixed(1)}°F)
+                ✓ Captured <strong>{lastCapture.label}</strong>: A={lastCapture.means && lastCapture.means.a != null ? (lastCapture.means.a*9/5+32).toFixed(1) + '°F' : '—'} | B={lastCapture.means && lastCapture.means.b != null ? (lastCapture.means.b*9/5+32).toFixed(1) + '°F' : '—'} | C={lastCapture.means && lastCapture.means.c != null ? (lastCapture.means.c*9/5+32).toFixed(1) + '°F' : '—'} (mean={lastCapture.groupMean != null ? (lastCapture.groupMean*9/5+32).toFixed(1) + '°F' : '—'})
               </div>
             )}
           </div>
@@ -2246,10 +2246,10 @@ function CalibrationPanel() {
                 {preview[unit] && preview[unit].count > 0 ? (
                   <>
                     <div className="cal-preview-value">
-                      {(preview[unit].mean*9/5+32).toFixed(1)}°F
+                      {preview[unit].mean != null ? (preview[unit].mean*9/5+32).toFixed(1) + '°F' : '—'}
                     </div>
                     <div className="cal-preview-range">
-                      {(preview[unit].min*9/5+32).toFixed(1)}–{(preview[unit].max*9/5+32).toFixed(1)}°F ({preview[unit].count} pts)
+                      {preview[unit].min != null ? (preview[unit].min*9/5+32).toFixed(1) : '—'}–{preview[unit].max != null ? (preview[unit].max*9/5+32).toFixed(1) : '—'}°F ({preview[unit].count} pts)
                     </div>
                   </>
                 ) : (
@@ -2279,7 +2279,7 @@ function CalibrationPanel() {
                   <div className="cal-session-meta">
                     {new Date(session.start_time * 1000).toLocaleString()} – {new Date(session.end_time * 1000).toLocaleTimeString()}
                   </div>
-                  {session.reference_temp && (
+                  {session.reference_temp != null && (
                     <div className="cal-session-ref">Reference: {(session.reference_temp*9/5+32).toFixed(2)}°F</div>
                   )}
                   {session.notes && <div style={{ fontSize: '0.72rem', color: 'var(--md-sys-color-on-surface-variant)' }}>{session.notes}</div>}
@@ -2350,31 +2350,31 @@ function CalibrationPanel() {
                   
                   <div className="cal-coeff-row">
                     <span className="cal-coeff-label">c0 (offset):</span>
-                    <span className="cal-coeff-value">{coeff.c0.toFixed(5)}</span>
+                    <span className="cal-coeff-value">{coeff.c0 != null ? coeff.c0.toFixed(5) : '—'}</span>
                   </div>
                   
                   <div className="cal-coeff-row">
                     <span className="cal-coeff-label">c1 (slope):</span>
-                    <span className="cal-coeff-value">{coeff.c1.toFixed(5)}</span>
+                    <span className="cal-coeff-value">{coeff.c1 != null ? coeff.c1.toFixed(5) : '—'}</span>
                   </div>
                   
                   {coeff.degree >= 2 && (
                     <div className="cal-coeff-row">
                       <span className="cal-coeff-label">c2 (quadratic):</span>
-                      <span className="cal-coeff-value">{coeff.c2.toFixed(6)}</span>
+                      <span className="cal-coeff-value">{coeff.c2 != null ? coeff.c2.toFixed(6) : '—'}</span>
                     </div>
                   )}
                   
                   {coeff.degree >= 3 && (
                     <div className="cal-coeff-row">
                       <span className="cal-coeff-label">c3 (cubic):</span>
-                      <span className="cal-coeff-value">{coeff.c3.toFixed(6)}</span>
+                      <span className="cal-coeff-value">{coeff.c3 != null ? coeff.c3.toFixed(6) : '—'}</span>
                     </div>
                   )}
                   
                   <div className="cal-coeff-row">
                     <span className="cal-coeff-label">Fitting RMSE:</span>
-                    <span className="cal-coeff-rmse">{coeff.rmse.toFixed(3)}°C</span>
+                    <span className="cal-coeff-rmse">{coeff.rmse != null ? coeff.rmse.toFixed(3) + '°C' : '—'}</span>
                   </div>
                   
                   <div className="cal-coeff-row">
@@ -2723,7 +2723,7 @@ function App() {
                     <span className="sync-sensor-tag">{info.unitA ? info.unitA.sensor : 'DHT22'}</span>
                   </label>
                   <span className="sync-disp-temp">
-                    {tempA ? ((tempA.temp_c * 9/5 + 32) + (offsets.a || 0)).toFixed(1) + ' °F' : '—'}
+                    {tempA && tempA.temp_c != null ? ((tempA.temp_c * 9/5 + 32) + (offsets.a || 0)).toFixed(1) + ' °F' : '—'}
                   </span>
                 </div>
                 <div className="sync-row">
@@ -2738,7 +2738,7 @@ function App() {
                     <span className="sync-sensor-tag">{info.unitB ? info.unitB.sensor : 'SHT30'}</span>
                   </label>
                   <span className="sync-disp-temp">
-                    {tempB ? ((tempB.temp_c * 9/5 + 32) + (offsets.b || 0)).toFixed(1) + ' °F' : '—'}
+                    {tempB && tempB.temp_c != null ? ((tempB.temp_c * 9/5 + 32) + (offsets.b || 0)).toFixed(1) + ' °F' : '—'}
                   </span>
                 </div>
                 <div className="sync-row">
@@ -2753,7 +2753,7 @@ function App() {
                     <span className="sync-sensor-tag">{info.unitC ? info.unitC.sensor : 'DHT11'}</span>
                   </label>
                   <span className="sync-disp-temp">
-                    {tempC ? ((tempC.temp_c * 9/5 + 32) + (offsets.c || 0)).toFixed(1) + ' °F' : '—'}
+                    {tempC && tempC.temp_c != null ? ((tempC.temp_c * 9/5 + 32) + (offsets.c || 0)).toFixed(1) + ' °F' : '—'}
                   </span>
                 </div>
                 <div className="sync-controls">
