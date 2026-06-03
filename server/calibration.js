@@ -203,6 +203,17 @@ function applyPolynomial(coeffs, rawValue) {
  * @returns {Object} { a: {coeffs, rmse, numPoints}, b: {...}, c: {...} }
  */
 function computeCalibrationCoefficients(calibData, degree = 2) {
+    // Precompute the peer average (mean of all sensors) for each session
+    // to use as a reference if no independent reference_temp is provided.
+    const sessionPeerMeans = {};
+    for (const point of calibData) {
+        if (!sessionPeerMeans[point.session_id]) {
+            sessionPeerMeans[point.session_id] = { sum: 0, count: 0 };
+        }
+        sessionPeerMeans[point.session_id].sum += point.mean_temp;
+        sessionPeerMeans[point.session_id].count += 1;
+    }
+
     // Group data by unit
     const byUnit = { a: [], b: [], c: [] };
     
@@ -223,14 +234,13 @@ function computeCalibrationCoefficients(calibData, degree = 2) {
         const sensorReadings = [];
         const referenceTemps = [];
         
-        // First pass: collect all reference temps (if provided) or compute global mean
-        const allMeans = points.map(p => p.mean_temp);
-        const globalMean = allMeans.reduce((a, b) => a + b, 0) / allMeans.length;
-        
         for (const point of points) {
             const sensorTemp = point.mean_temp;
-            // Use provided reference temp, or fallback to global mean of all sensors at that session
-            const referenceTemp = point.reference_temp ?? globalMean;
+            // Use provided reference temp, or fallback to the mean of all sensors in that session
+            const peerMean = sessionPeerMeans[point.session_id]
+                ? (sessionPeerMeans[point.session_id].sum / sessionPeerMeans[point.session_id].count)
+                : sensorTemp;
+            const referenceTemp = point.reference_temp ?? peerMean;
             
             sensorReadings.push(sensorTemp);
             referenceTemps.push(referenceTemp);

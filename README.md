@@ -6,12 +6,12 @@ ESP-NOW experimentation project using three **udevqal ESP32-S3 N16R8** developme
 
 - **ESP-NOW Mesh Network**: Three ESP32 units communicating via ESP-NOW protocol
 - **Temperature Monitoring**: DHT22, SHT30, and DHT11 sensors with synchronized readings
-- **Synchronized Temperature Reads**: All units read sensors simultaneously every 30 seconds
+- **Synchronized Temperature Reads**: All units read sensors simultaneously every 30 seconds (triggered by server before logging to ensure temporal alignment)
 - **Persistent Calibration**: Sensor offsets stored in NVS (survives reboots)
 - **Historical Temperature Logging**: Automatic 5-minute logging to SQLite database
-- **Time-Series Graphing**: Interactive Chart.js visualization with 1h/6h/24h/7d views
-- **Real-time Dashboard**: React-based web UI with WebSocket updates
-- **Signal Strength Monitoring**: Live RSSI display for WiFi and ESP-NOW links
+- **Time-Series Graphing**: Interactive Chart.js visualization with 1h/6h/24h/7d views and raw vs. calibrated toggle
+- **Real-time Dashboard**: Premium Material Design 3 web UI with WebSocket updates
+- **Signal Strength Monitoring**: Live RSSI display for WiFi and ESP-NOW links (polled every 3 seconds to prevent ESP32 lockups)
 - **LED Color Control**: Remote control of WS2812B LEDs on all units
 
 ---
@@ -116,11 +116,11 @@ GET http://10.0.0.48/reset_cal
 The server automatically logs temperature readings from all three units every 5 minutes to a SQLite database and displays them in an interactive time-series graph on the dashboard.
 
 **Features:**
-- ⏱️ Automatic 5-minute logging
-- 📊 Interactive Chart.js graph with 1h/6h/24h/7d views
+- ⏱️ Automatic 5-minute logging (triggering ESP32 sync 1.5s before query)
+- 📊 Interactive Chart.js graph with 1h/6h/24h/7d views and "Show Calibrated Curves" toggle
 - 💾 SQLite database (easily migrates to PostgreSQL/MySQL)
-- 🔄 Real-time WebSocket updates
-- 📡 REST API for historical data queries
+- 🔄 Real-time WebSocket updates for RSSI and temperature readings
+- 📡 REST API with local caching to prevent micro web server overload
 - 🎨 Color-coded by unit (A=blue, B=green, C=yellow)
 
 **Dashboard Graph:**
@@ -386,16 +386,19 @@ Unit A dispatches incoming ESP-NOW packets by size, magic byte, and source MAC. 
 
 ## Web UI
 
-Three unit cards (A, B, and C), a calibration sync panel, and a signal-strength panel:
+Beautifully designed following Google's **Material Design 3** guidelines:
 
-- **Unit A** — colour picker, Send button, live **DHT22** temperature, calibration offset.
-  Card header shows: role chip (HUB), sensor (DHT22), MAC, IP, COM port, transport.
-- **Unit B** — Match A / Independent mode, colour picker, live **SHT30** temperature, calibration offset.
-  Card header shows: role chip (SENSOR), sensor (SHT30), MAC, COM port, transport (ESP-NOW ch 11).
-- **Unit C** — Match A / Independent mode, colour picker, live **DHT11** temperature, calibration offset.
-  Card header shows: role chip (SENSOR), sensor (DHT11), MAC, COM port, transport (ESP-NOW ch 11).
-- **Temperature Calibration Sync panel** — checkbox per unit + "Sync to Average" button. Offsets persist in `localStorage`.
-- **Signal Strength panel** — live RSSI bars for A↔WiFi, A↔B, and A↔C (streamed via WebSocket every 300 ms).
+- **Dashboard Tab**:
+  - **Unit A** — colour picker, Send button, live **DHT22** temperature, calibration offset.
+    Card header shows: role chip (HUB), sensor (DHT22), MAC, IP, COM port, transport.
+  - **Unit B** — Match A / Independent mode, colour picker, live **SHT30** temperature, calibration offset.
+    Card header shows: role chip (SENSOR), sensor (SHT30), MAC, COM port, transport (ESP-NOW ch 11).
+  - **Unit C** — Match A / Independent mode, colour picker, live **DHT11** temperature, calibration offset.
+    Card header shows: role chip (SENSOR), sensor (DHT11), MAC, COM port, transport (ESP-NOW ch 11).
+  - **Calibration Sync panel** — checkbox per unit + "Align Offsets" button. Offsets persist in `localStorage`.
+  - **Signal Quality panel** — live RSSI bars for A↔WiFi, A↔B, and A↔C (streamed via WebSocket every 3 seconds, or polled via REST fallback when disconnected).
+- **History Graph Tab**: Plot temperature curves over 1h/6h/24h/7d. Includes a checkbox to switch between raw and active calibrated curves.
+- **Calibration Curve Tab**: Manually manage calibration sessions or auto-sync sessions. Corrected peer calibration math utilizes the session peer average as reference temp if none is provided.
 
 If the server can't reach Unit A, Units B and C cards display a "Unit A must be active" warning banner.
 
@@ -408,14 +411,14 @@ If the server can't reach Unit A, Units B and C cards display a "Unit A must be 
 | POST   | `/api/color/a`   | Set Unit A LED colour                      |
 | POST   | `/api/color/b`   | Set Unit B LED colour (forwarded via A)    |
 | POST   | `/api/color/c`   | Set Unit C LED colour (forwarded via A)    |
-| GET    | `/api/temp_a`    | Unit A DHT22 reading                       |
-| GET    | `/api/temp_b`    | Unit B SHT30 reading (cached by A)         |
-| GET    | `/api/temp_c`    | Unit C DHT11 reading (cached by A)         |
+| GET    | `/api/temp_a`    | Unit A DHT22 reading (cached by default; `?live=true` for direct read) |
+| GET    | `/api/temp_b`    | Unit B SHT30 reading (cached by default; `?live=true` for direct read) |
+| GET    | `/api/temp_c`    | Unit C DHT11 reading (cached by default; `?live=true` for direct read) |
 | GET    | `/api/temp`      | Alias for `/api/temp_c`                    |
 | GET    | `/api/rssi`      | RSSI values: `wifi`, `b`, `c`              |
 | GET    | `/api/info`      | MAC, IP, port, sensor, role, transport     |
 
-WebSocket on the same port broadcasts RSSI updates every 300 ms.
+WebSocket on the same port broadcasts RSSI updates every 3 seconds, and temperature readings whenever a background poll is recorded.
 
 ---
 
