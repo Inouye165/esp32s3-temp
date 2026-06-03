@@ -308,6 +308,32 @@ function getReadingsInRange(startTime, endTime) {
     return result;
 }
 
+// Memory cache for calibration coefficients to avoid high-frequency SQLite queries during history processing
+let coeffsCache = null;
+
+function loadCoefficientsCache() {
+    try {
+        const rows = db.prepare(`
+            SELECT unit_id, degree, c0, c1, c2, c3, computed_at, num_points, rmse
+            FROM calibration_coefficients
+        `).all();
+        coeffsCache = { a: null, b: null, c: null };
+        for (const row of rows) {
+            coeffsCache[row.unit_id] = row;
+        }
+    } catch (err) {
+        console.error('[db] Failed to load coefficients cache:', err);
+        coeffsCache = { a: null, b: null, c: null };
+    }
+}
+
+function getCachedCalibrationCoefficients(unitId) {
+    if (!coeffsCache) {
+        loadCoefficientsCache();
+    }
+    return coeffsCache[unitId];
+}
+
 /**
  * Save calibration coefficients for a unit
  * @param {Object} coeffs
@@ -321,7 +347,7 @@ function getReadingsInRange(startTime, endTime) {
  * @param {number} [coeffs.rmse] - Root mean square error
  */
 function saveCalibrationCoefficients({ unitId, degree, c0, c1, c2, c3, numPoints, rmse }) {
-    return db.prepare(`
+    const result = db.prepare(`
         INSERT INTO calibration_coefficients (unit_id, degree, c0, c1, c2, c3, num_points, rmse, computed_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(unit_id) DO UPDATE SET
@@ -334,6 +360,9 @@ function saveCalibrationCoefficients({ unitId, degree, c0, c1, c2, c3, numPoints
             rmse = excluded.rmse,
             computed_at = CURRENT_TIMESTAMP
     `).run(unitId, degree, c0, c1, c2 || 0, c3 || 0, numPoints || null, rmse || null);
+    
+    loadCoefficientsCache();
+    return result;
 }
 
 /**
@@ -342,11 +371,7 @@ function saveCalibrationCoefficients({ unitId, degree, c0, c1, c2, c3, numPoints
  * @returns {Object|undefined} { unit_id, degree, c0, c1, c2, c3, computed_at, num_points, rmse }
  */
 function getCalibrationCoefficients(unitId) {
-    return db.prepare(`
-        SELECT unit_id, degree, c0, c1, c2, c3, computed_at, num_points, rmse
-        FROM calibration_coefficients
-        WHERE unit_id = ?
-    `).get(unitId);
+    return getCachedCalibrationCoefficients(unitId);
 }
 
 /**
@@ -354,16 +379,10 @@ function getCalibrationCoefficients(unitId) {
  * @returns {Object} { a: {...}, b: {...}, c: {...} }
  */
 function getAllCalibrationCoefficients() {
-    const rows = db.prepare(`
-        SELECT unit_id, degree, c0, c1, c2, c3, computed_at, num_points, rmse
-        FROM calibration_coefficients
-    `).all();
-    
-    const result = {};
-    for (const row of rows) {
-        result[row.unit_id] = row;
+    if (!coeffsCache) {
+        loadCoefficientsCache();
     }
-    return result;
+    return { ...coeffsCache };
 }
 
 /**
@@ -375,7 +394,7 @@ function getAllCalibrationCoefficients() {
 function applyCalibratedTemp(unitId, rawTemp) {
     if (rawTemp === null || rawTemp === undefined) return null;
     
-    const coeffs = getCalibrationCoefficients(unitId);
+    const coeffs = getCachedCalibrationCoefficients(unitId);
     if (!coeffs) return rawTemp; // No calibration available
     
     // T_corrected = c0 + c1*T + c2*T^2 + c3*T^3
@@ -392,7 +411,18 @@ function applyCalibratedTemp(unitId, rawTemp) {
  * @param {string} unitId - 'a', 'b', or 'c'
  */
 function deleteCalibrationCoefficients(unitId) {
-    return db.prepare(`DELETE FROM calibration_coefficients WHERE unit_id = ?`).run(unitId);
+    const result = db.prepare(`DELETE FROM calibration_coefficients WHERE unit_id = ?`).run(unitId);
+    loadCoefficientsCache();
+    return result;
+}
+
+/**
+ * Clear all calibration coefficients at once
+ */
+function clearAllCalibrationCoefficients() {
+    const result = db.prepare(`DELETE FROM calibration_coefficients`).run();
+    loadCoefficientsCache();
+    return result;
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
@@ -416,6 +446,7 @@ module.exports = {
     getAllCalibrationCoefficients,
     applyCalibratedTemp,
     deleteCalibrationCoefficients,
+    clearAllCalibrationCoefficients,
     
     db, // Export raw db for custom queries if needed
 };

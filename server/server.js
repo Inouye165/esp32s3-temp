@@ -832,50 +832,166 @@ app.get('/api/calibration/preview', (req, res) => {
     }
 });
 
-// Compute and save calibration coefficients
-app.post('/api/calibration/compute', (req, res) => {
-    const { degree } = req.body;
-    const polyDegree = degree || 2;
+// Build calibration coefficients from colocated history
+app.post('/api/calibration/build-from-history', (req, res) => {
+    const { hours = 24, dryRun = false } = req.body || {};
+    const queryHours = parseInt(hours) || 24;
     
-    if (polyDegree < 1 || polyDegree > 3) {
-        return res.status(400).json({ ok: false, message: 'degree must be 1, 2, or 3' });
+    if (queryHours <= 0) {
+        return res.status(400).json({ ok: false, message: 'hours must be a positive integer' });
     }
     
     try {
-        // Get calibration data
-        const calibData = db.getCalibrationData();
+        const startTime = Math.floor(Date.now() / 1000) - queryHours * 3600;
+        const { pairs, numPaired, truthRangeC } = collectTripletPairs({ startTime });
         
-        if (calibData.length === 0) {
-            return res.status(400).json({ ok: false, message: 'No calibration sessions found' });
-        }
-        
-        // Compute coefficients
-        const results = calibration.computeCalibrationCoefficients(calibData, polyDegree);
-        
-        if (Object.keys(results).length === 0) {
-            return res.status(400).json({ ok: false, message: 'Not enough data points to compute calibration' });
-        }
-        
-        // Save to database
-        for (const [unitId, result] of Object.entries(results)) {
-            db.saveCalibrationCoefficients({
-                unitId,
-                degree: result.degree,
-                c0: result.coeffs[0] || 0,
-                c1: result.coeffs[1] || 1,
-                c2: result.coeffs[2] || 0,
-                c3: result.coeffs[3] || 0,
-                numPoints: result.numPoints,
-                rmse: result.rmse,
+        if (numPaired < 5) {
+            return res.status(400).json({ 
+                ok: false, 
+                message: `Not enough paired readings in the last ${queryHours} hours (found ${numPaired}, need at least 5). Place all modules together and ensure they are online.` 
             });
         }
         
-        const summary = calibration.formatCalibrationResults(results);
-        console.log(summary);
+        // 1. Compute before calibration average unit-to-unit spread
+        let beforeSpreadSum = 0;
+        for (let i = 0; i < numPaired; i++) {
+            const rawA = pairs.a[i].raw;
+            const rawB = pairs.b[i].raw;
+            const rawC = pairs.c[i].raw;
+            const spread = Math.max(rawA, rawB, rawC) - Math.min(rawA, rawB, rawC);
+            beforeSpreadSum += spread;
+        }
+        const beforeAverageSpread = beforeSpreadSum / numPaired;
         
-        res.json({ ok: true, results, summary });
+        // 2. Decide fitting method: linear regression vs simple offset fallback
+        // Use linear regression only if we have at least 1.0°C of temperature spread
+        let useLinear = (truthRangeC && truthRangeC.spread >= 1.0);
+        let results = {};
+        
+        if (useLinear) {
+            try {
+                // Fit degree 1 polynomial for each unit
+                for (const u of ['a', 'b', 'c']) {
+                    const x = pairs[u].map(p => p.raw);
+                    const y = pairs[u].map(p => p.truth);
+                    const coeffs = calibration.polynomialFit(x, y, 1); // degree 1 linear fit
+                    const c0 = coeffs[0];
+                    const c1 = coeffs[1];
+                    
+                    // Sanity check coefficients: c0 must be within [-15, 15] and slope c1 within [0.7, 1.3]
+                    if (!isFinite(c0) || !isFinite(c1) || c0 < -15 || c0 > 15 || c1 < 0.7 || c1 > 1.3) {
+                        useLinear = false;
+                        break;
+                    }
+                    
+                    const predicted = x.map(xv => c0 + c1 * xv);
+                    const rmse = calibration.calculateRMSE(y, predicted);
+                    
+                    results[u] = {
+                        coeffs: [c0, c1, 0, 0],
+                        rmse,
+                        method: 'linear',
+                        degree: 1,
+                        numPoints: numPaired
+                    };
+                }
+            } catch (err) {
+                useLinear = false;
+            }
+        }
+        
+        // If not using linear fit, fall back to offset calibration
+        if (!useLinear) {
+            const meanTruth = pairs.a.reduce((s, p) => s + p.truth, 0) / numPaired;
+            results = {};
+            for (const u of ['a', 'b', 'c']) {
+                const rawTemps = pairs[u].map(p => p.raw);
+                const meanRaw = rawTemps.reduce((s, v) => s + v, 0) / numPaired;
+                const offset = meanTruth - meanRaw;
+                
+                // Sanity check offset
+                if (!isFinite(offset) || offset < -15 || offset > 15) {
+                    return res.status(400).json({
+                        ok: false,
+                        message: `Absurd offset calculated for Unit ${u.toUpperCase()}: ${offset.toFixed(2)}°C. Aborting.`
+                    });
+                }
+                
+                const predicted = rawTemps.map(xv => xv + offset);
+                const rmse = calibration.calculateRMSE(pairs[u].map(p => p.truth), predicted);
+                
+                results[u] = {
+                    coeffs: [offset, 1, 0, 0], // corrected = raw + offset
+                    rmse,
+                    method: 'offset',
+                    degree: 1,
+                    numPoints: numPaired
+                };
+            }
+        }
+        
+        // 3. Compute after calibration average unit-to-unit spread
+        let afterSpreadSum = 0;
+        for (let i = 0; i < numPaired; i++) {
+            const rawA = pairs.a[i].raw;
+            const rawB = pairs.b[i].raw;
+            const rawC = pairs.c[i].raw;
+            
+            const calA = results.a.coeffs[0] + results.a.coeffs[1] * rawA;
+            const calB = results.b.coeffs[0] + results.b.coeffs[1] * rawB;
+            const calC = results.c.coeffs[0] + results.c.coeffs[1] * rawC;
+            
+            const spread = Math.max(calA, calB, calC) - Math.min(calA, calB, calC);
+            afterSpreadSum += spread;
+        }
+        const afterAverageSpread = afterSpreadSum / numPaired;
+        
+        // 4. Sanity check spread: must not make it worse
+        if (afterAverageSpread > beforeAverageSpread) {
+            return res.status(400).json({
+                ok: false,
+                message: `Calibration rejected: average sensor spread would degrade from ${beforeAverageSpread.toFixed(3)}°C to ${afterAverageSpread.toFixed(3)}°C.`
+            });
+        }
+        
+        // 5. Save to database if not dry run
+        if (!dryRun) {
+            for (const [unitId, r] of Object.entries(results)) {
+                db.saveCalibrationCoefficients({
+                    unitId,
+                    degree: r.degree,
+                    c0: r.coeffs[0],
+                    c1: r.coeffs[1],
+                    c2: r.coeffs[2],
+                    c3: r.coeffs[3],
+                    numPoints: r.numPoints,
+                    rmse: r.rmse,
+                });
+            }
+        }
+        
+        res.json({
+            ok: true,
+            numPaired,
+            beforeAverageSpread,
+            afterAverageSpread,
+            results,
+            dryRun,
+            method: useLinear ? 'linear' : 'offset'
+        });
     } catch (err) {
-        console.error('[api] POST /calibration/compute error:', err);
+        console.error('[api] POST /calibration/build-from-history error:', err);
+        res.status(500).json({ ok: false, message: err.message });
+    }
+});
+
+// Clear all active calibration coefficients at once
+app.delete('/api/calibration/coefficients', (_req, res) => {
+    try {
+        db.clearAllCalibrationCoefficients();
+        res.json({ ok: true, message: 'All active calibration coefficients have been cleared' });
+    } catch (err) {
+        console.error('[api] DELETE /calibration/coefficients error:', err);
         res.status(500).json({ ok: false, message: err.message });
     }
 });

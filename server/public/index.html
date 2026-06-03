@@ -1189,9 +1189,9 @@ function SignalMeter({ label, rssi }) {
 
 // ── SignalPanel ───────────────────────────────────────────────────────────────
 function SignalPanel({ rssi, wsConnected }) {
-  const wifiRssi = rssi.wifi ? rssi.wifi.rssi : null;
-  const bRssi    = rssi.b    ? rssi.b.rssi    : null;
-  const cRssi    = rssi.c    ? rssi.c.rssi    : null;
+  const wifiRssi = rssi && rssi.wifi ? rssi.wifi.rssi : null;
+  const bRssi    = rssi && rssi.b    ? rssi.b.rssi    : null;
+  const cRssi    = rssi && rssi.c    ? rssi.c.rssi    : null;
   return (
     <div className="signal-panel">
       <div className="panel-title">
@@ -1211,7 +1211,7 @@ function SignalPanel({ rssi, wsConnected }) {
 }
 
 // ── TempBadge ─────────────────────────────────────────────────────────────────
-function TempBadge({ data, offset = 0, unitId, calibratedTempC }) {
+function TempBadge({ data, unitId, calibratedTempC, hasCal }) {
   if (!data) {
     return (
       <div className="temp-display">
@@ -1230,12 +1230,9 @@ function TempBadge({ data, offset = 0, unitId, calibratedTempC }) {
     );
   }
   
-  const displayF = data.temp_c != null ? ((data.temp_c * 9 / 5 + 32) + offset).toFixed(1) : '—';
+  const rawF = (data.temp_c * 9 / 5 + 32).toFixed(1);
+  const calF = calibratedTempC != null ? (calibratedTempC * 9 / 5 + 32).toFixed(1) : '—';
   const age = data.age < 60 ? data.age + 's ago' : Math.floor(data.age / 60) + 'm ago';
-  
-  // If calibration is available, show calibrated value
-  const hasCal = calibratedTempC !== null && calibratedTempC !== undefined && calibratedTempC !== data.temp_c;
-  const calF = hasCal && calibratedTempC != null ? (calibratedTempC * 9 / 5 + 32).toFixed(1) : null;
   
   return (
     <div className="temp-display">
@@ -1244,7 +1241,7 @@ function TempBadge({ data, offset = 0, unitId, calibratedTempC }) {
           <span className="material-symbols-outlined" style={{fontSize:'16px'}}>device_thermostat</span>
           <span>Temp</span>
         </div>
-        <div className="val">{displayF}°F</div>
+        <div className="val">{hasCal ? calF : rawF}°F</div>
       </div>
       
       {data.humidity !== null && (
@@ -1257,31 +1254,19 @@ function TempBadge({ data, offset = 0, unitId, calibratedTempC }) {
         </div>
       )}
       
-      {hasCal && (
-        <div className="calibrated-row">
-          <div className="label-group" style={{color:'#5fdb8a'}}>
-            <span className="material-symbols-outlined" style={{fontSize:'14px'}}>grid_on</span>
-            <span>Calibrated</span>
-          </div>
-          <div className="calibrated-val">{calF}°F</div>
+      <div className="calibration-status-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', fontSize: '0.72rem' }}>
+        <div style={{ color: hasCal ? '#5fdb8a' : 'var(--md-sys-color-on-surface-variant)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span className="material-symbols-outlined" style={{fontSize:'14px'}}>{hasCal ? 'verified' : 'info'}</span>
+          <span>{hasCal ? 'Calibrated' : 'Not calibrated'}</span>
         </div>
-      )}
-      <div className="age-row">Updated {age}</div>
-    </div>
-  );
-}
-
-// ── TempOffset ────────────────────────────────────────────────────────────────
-// UI Component for slider/input of calibration offset
-function TempOffset({ value, onChange }) {
-  return (
-    <div className="offset-row">
-      <span>Local offset:</span>
-      <div style={{display:'flex', alignItems:'center', gap:'6px'}}>
-        <input type="number" step="0.1" value={value}
-               onChange={e => onChange(parseFloat(e.target.value) || 0)} />
-        <span>°F</span>
+        {hasCal && (
+          <div style={{ color: 'var(--md-sys-color-on-surface-variant)' }}>
+            Raw: {rawF}°F
+          </div>
+        )}
       </div>
+      
+      <div className="age-row" style={{ marginTop: '4px' }}>Updated {age}</div>
     </div>
   );
 }
@@ -1335,7 +1320,7 @@ function TemperatureGraph() {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
   const [timeRange, setTimeRange] = useState(6); // hours
-  const [showCalibrated, setShowCalibrated] = useState(false);
+  const [showCalibrated, setShowCalibrated] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [readings, setReadings] = useState([]);
@@ -1585,193 +1570,17 @@ function TemperatureGraph() {
 
 // ── CalibrationPanel ──────────────────────────────────────────────────────────
 function CalibrationPanel() {
-  const [sessions, setSessions] = useState([]);
-  const [coefficients, setCoefficients] = useState({});
+  const [timeRange, setTimeRange] = useState(24); // default 24 hours
+  const [dryRun, setDryRun] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
-  
-  // Form state for new calibration session
-  const [sessionName, setSessionName] = useState('');
-  const [referenceTemp, setReferenceTemp] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
-  const [notes, setNotes] = useState('');
-  const [preview, setPreview] = useState(null);
-  const [computeDegree, setComputeDegree] = useState(2);
+  const [coefficients, setCoefficients] = useState({});
+  const [summary, setSummary] = useState(null);
 
-  // ── Auto-Sync Calibration Mode state ──
-  const [autoMode, setAutoMode] = useState({ enabled: false, degree: 1, autoRecompute: true, captureWindowSec: 90 });
-  const [coverage, setCoverage] = useState({ numPoints: 0, minF: null, maxF: null });
-  const [captureLabel, setCaptureLabel] = useState('');
-  const [captureRef, setCaptureRef] = useState('');
-  const [capturing, setCapturing] = useState(false);
-  const [lastCapture, setLastCapture] = useState(null);
-
-  // ── Bootstrap (fit polynomial from history) ──
-  const [bootstrapInfo, setBootstrapInfo] = useState(null);
-  const [bootstrapping, setBootstrapping] = useState(false);
-  const [bootstrapDegree, setBootstrapDegree] = useState(2);
-  const [bootstrapStartTime, setBootstrapStartTime] = useState('');
-  const [bootstrapEndTime, setBootstrapEndTime] = useState('');
-  
   useEffect(() => {
-    fetchSessions();
     fetchCoefficients();
-    fetchAutoMode();
-    fetchBootstrapInfo();
   }, []);
 
-  async function fetchBootstrapInfo() {
-    try {
-      const res = await fetch('/api/calibration/bootstrap');
-      const data = await res.json();
-      if (data.ok) setBootstrapInfo(data);
-    } catch (err) {
-      console.error('[bootstrap] fetch failed:', err);
-    }
-  }
-
-  async function handleBootstrap() {
-    if (!bootstrapInfo || bootstrapInfo.numPaired === 0) {
-      setMessage({ type: 'error', text: 'No paired historical readings available.' });
-      return;
-    }
-    const timeRangeDesc = (!bootstrapStartTime && !bootstrapEndTime) 
-      ? 'all data'
-      : (bootstrapStartTime && bootstrapEndTime
-        ? `data from ${new Date(bootstrapStartTime).toLocaleDateString()} to ${new Date(bootstrapEndTime).toLocaleDateString()}`
-        : (bootstrapStartTime
-          ? `data from ${new Date(bootstrapStartTime).toLocaleDateString()} onwards`
-          : `data up to ${new Date(bootstrapEndTime).toLocaleDateString()}`));
-    if (!confirm(`Fit a degree-${bootstrapDegree} polynomial from ${bootstrapInfo.numPaired} paired readings (${timeRangeDesc})? This will overwrite any existing coefficients.`)) return;
-    setBootstrapping(true);
-    setMessage({ type: 'info', text: 'Fitting polynomial from history…' });
-    try {
-      const body = { degree: bootstrapDegree };
-      if (bootstrapStartTime) body.startTime = Math.floor(new Date(bootstrapStartTime).getTime() / 1000);
-      if (bootstrapEndTime) body.endTime = Math.floor(new Date(bootstrapEndTime).getTime() / 1000);
-      
-      const res = await fetch('/api/calibration/bootstrap', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        const rmseTxt = ['a','b','c']
-          .filter(u => data.results[u])
-          .map(u => `${u.toUpperCase()}=${data.results[u].rmse.toFixed(3)}°C`)
-          .join(', ');
-        setMessage({
-          type: 'success',
-          text: `Bootstrapped degree-${data.degree} polynomial from ${data.numPaired} pairs (${data.truthRangeF.min.toFixed(1)}–${data.truthRangeF.max.toFixed(1)}°F). RMSE: ${rmseTxt}`,
-        });
-        fetchCoefficients();
-        fetchAutoMode();
-      } else {
-        setMessage({ type: 'error', text: data.message });
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Bootstrap failed: ' + err.message });
-    } finally {
-      setBootstrapping(false);
-    }
-  }
-
-  async function fetchAutoMode() {
-    try {
-      const res = await fetch('/api/calibration/automode');
-      const data = await res.json();
-      if (data.ok) {
-        setAutoMode(data.mode);
-        if (data.coverage) setCoverage(data.coverage);
-      }
-    } catch (err) {
-      console.error('[autoCal] fetch failed:', err);
-    }
-  }
-
-  async function toggleAutoMode(enabled) {
-    try {
-      const res = await fetch('/api/calibration/automode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setAutoMode(data.mode);
-        setMessage({ type: 'success', text: enabled ? 'Auto-Sync mode ENABLED — place all sensors together, then capture points.' : 'Auto-Sync mode disabled.' });
-      } else {
-        setMessage({ type: 'error', text: data.message });
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed: ' + err.message });
-    }
-  }
-
-  async function updateAutoModeSetting(patch) {
-    try {
-      const res = await fetch('/api/calibration/automode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch),
-      });
-      const data = await res.json();
-      if (data.ok) setAutoMode(data.mode);
-    } catch (err) {
-      console.error('[autoCal] update failed:', err);
-    }
-  }
-
-  async function handleCapturePoint() {
-    setCapturing(true);
-    setMessage({ type: 'info', text: 'Capturing… triggering sync and collecting 3 samples (~5s)…' });
-    try {
-      const res = await fetch('/api/calibration/capture', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          label: captureLabel || null,
-          referenceTemp: captureRef || null,
-        }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setLastCapture(data);
-        const fmt = (c) => c === null || c === undefined ? '—' : (c * 9 / 5 + 32).toFixed(1) + '°F';
-        const recomputeMsg = data.recompute
-          ? (data.recompute.ok ? ` Recomputed: ${Object.keys(data.recompute.results || {}).length} unit(s).` : ` Recompute failed: ${data.recompute.message}`)
-          : '';
-        setMessage({
-          type: 'success',
-          text: `Captured "${data.label}" — A=${fmt(data.means.a)} B=${fmt(data.means.b)} C=${fmt(data.means.c)} (mean=${fmt(data.groupMean)}).${recomputeMsg}`,
-        });
-        setCaptureLabel('');
-        setCaptureRef('');
-        fetchSessions();
-        fetchCoefficients();
-        fetchAutoMode();
-      } else {
-        setMessage({ type: 'error', text: data.message });
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Capture failed: ' + err.message });
-    } finally {
-      setCapturing(false);
-    }
-  }
-  
-  async function fetchSessions() {
-    try {
-      const res = await fetch('/api/calibration/sessions');
-      const data = await res.json();
-      if (data.ok) setSessions(data.sessions);
-    } catch (err) {
-      console.error('[calibration] Failed to fetch sessions:', err);
-    }
-  }
-  
   async function fetchCoefficients() {
     try {
       const res = await fetch('/api/calibration/coefficients');
@@ -1781,575 +1590,241 @@ function CalibrationPanel() {
       console.error('[calibration] Failed to fetch coefficients:', err);
     }
   }
-  
-  async function handlePreview() {
-    if (!startTime || !endTime) {
-      setMessage({ type: 'error', text: 'Please select start and end times' });
-      return;
-    }
-    const start = Math.floor(new Date(startTime).getTime() / 1000);
-    const end = Math.floor(new Date(endTime).getTime() / 1000);
-    if (end <= start) {
-      setMessage({ type: 'error', text: 'End time must be after start time' });
-      return;
-    }
-    try {
-      const res = await fetch(`/api/calibration/preview?startTime=${start}&endTime=${end}`);
-      const data = await res.json();
-      if (data.ok) {
-        setPreview(data.preview);
-        setMessage(null);
-      } else {
-        setMessage({ type: 'error', text: data.message });
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to load preview: ' + err.message });
-    }
-  }
-  
-  async function handleCreateSession(e) {
-    e.preventDefault();
-    if (!startTime || !endTime) {
-      setMessage({ type: 'error', text: 'Please select start and end times' });
-      return;
-    }
-    const start = Math.floor(new Date(startTime).getTime() / 1000);
-    const end = Math.floor(new Date(endTime).getTime() / 1000);
-    if (end <= start) {
-      setMessage({ type: 'error', text: 'End time must be after start time' });
-      return;
-    }
+
+  async function handleBuildCalibration() {
     setLoading(true);
+    setMessage(null);
+    setSummary(null);
     try {
-      const res = await fetch('/api/calibration/sessions', {
+      const res = await fetch('/api/calibration/build-from-history', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: sessionName || null,
-          referenceTemp: referenceTemp ? parseFloat(referenceTemp) : null,
-          startTime: start,
-          endTime: end,
-          notes: notes || null,
-        }),
+        body: JSON.stringify({ hours: timeRange, dryRun }),
       });
       const data = await res.json();
       if (data.ok) {
-        setMessage({ type: 'success', text: 'Calibration session created!' });
-        setSessionName('');
-        setReferenceTemp('');
-        setStartTime('');
-        setEndTime('');
-        setPreview(null);
-        fetchSessions();
+        setSummary(data);
+        if (!dryRun) {
+          setMessage({ type: 'success', text: 'Calibration successfully built and saved!' });
+          fetchCoefficients();
+          if (window.onCalibrationChanged) {
+            window.onCalibrationChanged();
+          }
+        } else {
+          setMessage({ type: 'info', text: 'Dry run completed. Results shown below (not saved).' });
+        }
       } else {
         setMessage({ type: 'error', text: data.message });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to create session: ' + err.message });
+      setMessage({ type: 'error', text: 'Failed to build calibration: ' + err.message });
     } finally {
       setLoading(false);
     }
   }
-  
-  async function handleDeleteSession(sessionId) {
-    if (!confirm('Delete this calibration session?')) return;
-    try {
-      const res = await fetch(`/api/calibration/sessions/${sessionId}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.ok) {
-        setMessage({ type: 'success', text: 'Session deleted' });
-        fetchSessions();
-      } else {
-        setMessage({ type: 'error', text: data.message });
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to delete session: ' + err.message });
-    }
-  }
-  
-  async function handleComputeCalibration() {
-    if (sessions.length === 0) {
-      setMessage({ type: 'error', text: 'No calibration sessions found. Create sessions first.' });
-      return;
-    }
+
+  async function handleClearCalibration() {
+    if (!confirm('Are you sure you want to clear all active calibration coefficients? This will revert all readings to raw values.')) return;
     setLoading(true);
-    setMessage({ type: 'info', text: 'Computing calibration coefficients...' });
+    setMessage(null);
+    setSummary(null);
     try {
-      const res = await fetch('/api/calibration/compute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ degree: computeDegree }),
+      const res = await fetch('/api/calibration/coefficients', {
+        method: 'DELETE',
       });
       const data = await res.json();
       if (data.ok) {
-        setMessage({ type: 'success', text: 'Calibration computed successfully!' });
-        fetchCoefficients();
+        setMessage({ type: 'success', text: 'All calibration coefficients cleared.' });
+        setCoefficients({});
+        if (window.onCalibrationChanged) {
+          window.onCalibrationChanged();
+        }
       } else {
         setMessage({ type: 'error', text: data.message });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to compute calibration: ' + err.message });
+      setMessage({ type: 'error', text: 'Failed to clear calibration: ' + err.message });
     } finally {
       setLoading(false);
     }
   }
-  
-  async function handleDeleteCoefficients(unitId) {
-    if (!confirm(`Delete calibration for Unit ${unitId.toUpperCase()}?`)) return;
-    try {
-      const res = await fetch(`/api/calibration/coefficients/${unitId}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.ok) {
-        setMessage({ type: 'success', text: 'Calibration deleted' });
-        fetchCoefficients();
-      } else {
-        setMessage({ type: 'error', text: data.message });
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to delete: ' + err.message });
+
+  const formatFormula = (coeffs, method) => {
+    if (!coeffs || coeffs.length === 0) return '—';
+    const c0 = coeffs[0];
+    const c1 = coeffs[1] !== undefined ? coeffs[1] : 1;
+    
+    const sign = c0 >= 0 ? '+' : '-';
+    if (method === 'offset' || Math.abs(c1 - 1.0) < 1e-7) {
+      return `T_cal = T_raw ${sign} ${Math.abs(c0).toFixed(4)}°C`;
+    } else {
+      return `T_cal = (${c1.toFixed(5)} * T_raw) ${sign} ${Math.abs(c0).toFixed(4)}°C`;
     }
-  }
-  
-  function setTimeRangeToday() {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0);
-    setStartTime(start.toISOString().slice(0, 16));
-    setEndTime(now.toISOString().slice(0, 16));
-  }
-  
-  function setTimeRangeLast24h() {
-    const now = new Date();
-    const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    setStartTime(start.toISOString().slice(0, 16));
-    setEndTime(now.toISOString().slice(0, 16));
-  }
-  
+  };
+
+  const hasActiveCoeffs = Object.values(coefficients).some(c => c !== null);
+
   return (
-    <div className="cal-panel">
-      {message && (
-        <div style={{
-          padding: '12px 16px',
-          borderRadius: '8px',
-          background: message.type === 'error' ? 'var(--md-sys-color-error-container)' : message.type === 'success' ? 'rgba(74, 222, 128, 0.08)' : 'rgba(168, 199, 250, 0.08)',
-          color: message.type === 'error' ? 'var(--md-sys-color-error)' : message.type === 'success' ? '#4ade80' : 'var(--md-sys-color-primary)',
-          border: `1px solid ${message.type === 'error' ? 'var(--md-sys-color-error)' : message.type === 'success' ? '#2d7a3e' : 'var(--md-sys-color-primary)'}`,
-          fontSize: '0.82rem',
-          fontWeight: '500',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px'
-        }}>
-          <span className="material-symbols-outlined" style={{fontSize: '18px'}}>
-            {message.type === 'error' ? 'report' : message.type === 'success' ? 'check_circle' : 'info'}
-          </span>
-          {message.text}
+    <div className="calibration-container">
+      {/* Instructions card */}
+      <div className="cal-section">
+        <div className="cal-section-title">
+          <span className="material-symbols-outlined" style={{color: 'var(--md-sys-color-primary)'}}>info</span>
+          <span>Co-location Calibration Instructions</span>
         </div>
-      )}
-      
-      {/* Auto-Sync Calibration Mode */}
-      <div className="cal-section" style={{
-        border: autoMode.enabled ? '1px solid var(--md-sys-color-primary)' : '1px solid var(--md-sys-color-outline)',
-        borderRadius: '12px',
-        padding: '16px',
-        background: autoMode.enabled ? 'rgba(168, 199, 250, 0.02)' : 'transparent',
-      }}>
-        <div className="cal-section-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span className="material-symbols-outlined" style={{color: 'var(--md-sys-color-primary)'}}>automation</span>
-          <span>Auto-Sync Calibration</span>
-          <span style={{
-            fontSize: '0.68rem',
-            padding: '2px 8px',
-            borderRadius: '10px',
-            background: autoMode.enabled ? 'var(--md-sys-color-primary-container)' : 'var(--md-sys-color-surface-variant)',
-            color: autoMode.enabled ? 'var(--md-sys-color-on-primary-container)' : 'var(--md-sys-color-on-surface-variant)',
-            fontWeight: '600',
-            marginLeft: 'auto'
-          }}>
-            {autoMode.enabled ? 'ON' : 'OFF'}
-          </span>
-        </div>
-
-        <p className="cal-description">
-          Colocate all 3 sensors together so they experience the exact same environment.
-          Enable Auto-Sync Mode, stabilization for 10-15 minutes, then trigger <strong>Capture Point Now</strong>. 
-          Repeat at different temperatures (fridge, indoor, outdoor, warm area) to auto-fit a correction curve.
+        <p className="cal-description" style={{ lineHeight: '1.5' }}>
+          1. Put Unit A, Unit B, and Unit C next to each other in the exact same spot.<br />
+          2. Leave them running for several hours or overnight to collect historical data.<br />
+          3. Select your time range below (e.g., "Last 24 hours").<br />
+          4. Click <strong>Build Calibration From History</strong>.<br />
+          5. Verify that the unit-to-unit spread improved. The system will automatically calibrate and display results.
         </p>
+      </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '14px' }}>
-          <button
-            className={'m-btn ' + (autoMode.enabled ? 'm-btn-danger' : 'm-btn-primary')}
-            onClick={() => toggleAutoMode(!autoMode.enabled)}
-          >
-            {autoMode.enabled ? 'Disable Mode' : 'Enable Mode'}
-          </button>
+      {/* Build Calibration panel */}
+      <div className="cal-section">
+        <div className="cal-section-title">
+          <span className="material-symbols-outlined" style={{color: 'var(--md-sys-color-primary)'}}>build</span>
+          <span>Build Calibration</span>
+        </div>
+        
+        {message && (
+          <div className={`status-badge ${message.type}`} style={{ marginBottom: '14px', width: 'fit-content' }}>
+            {message.text}
+          </div>
+        )}
 
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', marginBottom: '16px' }}>
           <label style={{ fontSize: '0.8rem', color: 'var(--md-sys-color-on-surface-variant)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>Degree:</span>
+            <span>Time Range:</span>
             <select
               className="cal-input"
-              value={autoMode.degree}
-              onChange={(e) => updateAutoModeSetting({ degree: parseInt(e.target.value) })}
-              style={{ flex: 'none', width: '110px', padding: '6px 10px' }}
+              value={timeRange}
+              onChange={(e) => setTimeRange(parseInt(e.target.value))}
+              style={{ flex: 'none', width: '130px', padding: '6px 10px' }}
+              disabled={loading}
             >
-              <option value={1}>1 (Linear)</option>
-              <option value={2}>2 (Quadratic)</option>
-              <option value={3}>3 (Cubic)</option>
+              <option value={1}>Last 1 Hour</option>
+              <option value={6}>Last 6 Hours</option>
+              <option value={12}>Last 12 Hours</option>
+              <option value={24}>Last 24 Hours</option>
+              <option value={168}>Last 7 Days</option>
             </select>
           </label>
 
           <label style={{ fontSize: '0.8rem', color: 'var(--md-sys-color-on-surface-variant)', display: 'flex', alignItems: 'center', gap: '6px', cursor:'pointer' }}>
             <input
               type="checkbox"
-              checked={autoMode.autoRecompute}
-              onChange={(e) => updateAutoModeSetting({ autoRecompute: e.target.checked })}
+              checked={dryRun}
+              onChange={(e) => setDryRun(e.target.checked)}
               style={{accentColor: 'var(--md-sys-color-primary)'}}
+              disabled={loading}
             />
-            <span>Auto-compute curve</span>
+            <span>Dry run / preview only</span>
           </label>
         </div>
 
-        <div style={{
-          padding: '10px 14px',
-          background: 'rgba(0,0,0,0.15)',
-          borderRadius: '8px',
-          fontSize: '0.78rem',
-          color: 'var(--md-sys-color-on-surface-variant)',
-          marginBottom: '14px',
-          border: '1px solid var(--md-sys-color-outline)'
-        }}>
-          <strong>Calibration Coverage:</strong>{' '}
-          {coverage.numPoints === 0 ? (
-            <span style={{ color: 'var(--md-sys-color-primary)' }}>No captured sessions yet. Collect data points at different temperatures.</span>
-          ) : (
-            <>
-              {coverage.numPoints} point(s)
-              {coverage.minF !== null && coverage.maxF !== null && (
-                <> spanning <strong style={{ color: '#fff' }}>{coverage.minF.toFixed(1)}°F → {coverage.maxF.toFixed(1)}°F</strong> ({(coverage.maxF - coverage.minF).toFixed(1)}°F span)</>
-              )}
-              {coverage.numPoints < (autoMode.degree + 1) && (
-                <span style={{ color: 'var(--md-sys-color-error)' }}> — need {autoMode.degree + 1 - coverage.numPoints} more points.</span>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Bootstrap from existing history */}
-        <div style={{
-          padding: '14px',
-          background: 'rgba(255,255,255,0.01)',
-          border: '1px dashed var(--md-sys-color-outline)',
-          borderRadius: '10px',
-          marginBottom: '14px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
-            <strong style={{ color: 'var(--md-sys-color-primary)', fontSize: '0.85rem' }}>📚 Fit from History (Bootstrap)</strong>
-            <span style={{ fontSize: '0.75rem', color: 'var(--md-sys-color-on-surface-variant)' }}>
-              {bootstrapInfo
-                ? (bootstrapInfo.numPaired > 0 && bootstrapInfo.truthRangeF
-                  ? `${bootstrapInfo.numPaired} triplets, range ${bootstrapInfo.truthRangeF?.min != null ? bootstrapInfo.truthRangeF.min.toFixed(1) : '—'}–${bootstrapInfo.truthRangeF?.max != null ? bootstrapInfo.truthRangeF.max.toFixed(1) : '—'}°F`
-                  : 'No paired readings found in DB')
-                : 'Inspecting DB...'}
-            </span>
-          </div>
-          <p style={{ fontSize: '0.75rem', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: '12px' }}>
-            Select a period where all 3 monitors were placed together. Leave blank to fit using all database history.
-          </p>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button 
+            className="m-btn m-btn-primary" 
+            onClick={handleBuildCalibration} 
+            disabled={loading}
+          >
+            {loading ? 'Building...' : 'Build Calibration From History'}
+          </button>
           
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', marginBottom: '12px' }}>
-            <div>
-              <label style={{ fontSize: '0.72rem', color: 'var(--md-sys-color-on-surface-variant)', display: 'block', marginBottom: '4px' }}>Start Period</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <input
-                  type="datetime-local"
-                  className="cal-input"
-                  value={bootstrapStartTime}
-                  onChange={(e) => setBootstrapStartTime(e.target.value)}
-                  disabled={bootstrapping}
-                />
-                <button className="m-btn m-btn-secondary" onClick={() => setBootstrapStartTime('')} disabled={bootstrapping || !bootstrapStartTime} style={{padding:'4px 8px'}}>X</button>
-              </div>
-            </div>
-            <div>
-              <label style={{ fontSize: '0.72rem', color: 'var(--md-sys-color-on-surface-variant)', display: 'block', marginBottom: '4px' }}>End Period</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <input
-                  type="datetime-local"
-                  className="cal-input"
-                  value={bootstrapEndTime}
-                  onChange={(e) => setBootstrapEndTime(e.target.value)}
-                  disabled={bootstrapping}
-                />
-                <button className="m-btn m-btn-secondary" onClick={() => setBootstrapEndTime('')} disabled={bootstrapping || !bootstrapEndTime} style={{padding:'4px 8px'}}>X</button>
-              </div>
-            </div>
-          </div>
-          
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
-            <label style={{ fontSize: '0.8rem', color: 'var(--md-sys-color-on-surface-variant)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span>Degree:</span>
-              <select
-                className="cal-input"
-                value={bootstrapDegree}
-                onChange={(e) => setBootstrapDegree(parseInt(e.target.value))}
-                style={{ flex: 'none', width: '90px', padding: '6px' }}
-                disabled={bootstrapping}
-              >
-                <option value={1}>1 (Lin)</option>
-                <option value={2}>2 (Quad)</option>
-                <option value={3}>3 (Cub)</option>
-              </select>
-            </label>
-            <button className="m-btn m-btn-secondary" onClick={fetchBootstrapInfo} disabled={bootstrapping}>Preview DB</button>
-            <button className="m-btn m-btn-primary" onClick={handleBootstrap} disabled={bootstrapping || !bootstrapInfo || bootstrapInfo.numPaired === 0}>
-              {bootstrapping ? '⏳ Fitting...' : 'Fit & Apply Now'}
-            </button>
-          </div>
-        </div>
-
-        {autoMode.enabled && (
-          <div style={{
-            padding: '14px',
-            background: 'rgba(0,0,0,0.2)',
-            borderRadius: '10px',
-            border: '1px solid var(--md-sys-color-outline)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '10px'
-          }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              <input
-                type="text"
-                className="cal-input"
-                placeholder="Optional label (e.g. Ice bucket)"
-                value={captureLabel}
-                onChange={(e) => setCaptureLabel(e.target.value)}
-                disabled={capturing}
-              />
-              <input
-                type="number"
-                step="0.1"
-                className="cal-input"
-                placeholder="Ref temp (°C, optional)"
-                value={captureRef}
-                onChange={(e) => setCaptureRef(e.target.value)}
-                disabled={capturing}
-              />
-              <button
-                className="m-btn m-btn-primary"
-                onClick={handleCapturePoint}
-                disabled={capturing}
-              >
-                {capturing ? 'Sampling...' : 'Capture Point Now'}
-              </button>
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--md-sys-color-on-surface-variant)' }}>
-              Each capture triggers an ESP32 sync and averages 3 sequential readings spaced 1.5s apart.
-            </div>
-
-            {lastCapture && (
-              <div style={{
-                padding: '8px 12px',
-                background: 'rgba(74,222,128,0.06)',
-                borderRadius: '8px',
-                fontSize: '0.76rem',
-                color: '#8be2a0',
-                border: '1px solid rgba(74,222,128,0.15)'
-              }}>
-                ✓ Captured <strong>{lastCapture.label}</strong>: A={lastCapture.means && lastCapture.means.a != null ? (lastCapture.means.a*9/5+32).toFixed(1) + '°F' : '—'} | B={lastCapture.means && lastCapture.means.b != null ? (lastCapture.means.b*9/5+32).toFixed(1) + '°F' : '—'} | C={lastCapture.means && lastCapture.means.c != null ? (lastCapture.means.c*9/5+32).toFixed(1) + '°F' : '—'} (mean={lastCapture.groupMean != null ? (lastCapture.groupMean*9/5+32).toFixed(1) + '°F' : '—'})
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Create Calibration Session manually */}
-      <div className="cal-section">
-        <div className="cal-section-title">
-          <span className="material-symbols-outlined" style={{color: 'var(--md-sys-color-primary)'}}>edit_calendar</span>
-          <span>Create Calibration Session</span>
-        </div>
-        <p className="cal-description">
-          Manually input a historical window where all units were in thermal equilibrium.
-        </p>
-        
-        <form className="cal-form" onSubmit={handleCreateSession}>
-          <div className="cal-form-row">
-            <label className="cal-label">Session Name</label>
-            <input 
-              type="text" 
-              className="cal-input" 
-              placeholder="e.g. Ice water test"
-              value={sessionName}
-              onChange={(e) => setSessionName(e.target.value)}
-            />
-          </div>
-          
-          <div className="cal-form-row">
-            <label className="cal-label">Time Window</label>
-            <input 
-              type="datetime-local" 
-              className="cal-input"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              required
-            />
-            <span style={{color:'var(--md-sys-color-on-surface-variant)'}}>to</span>
-            <input 
-              type="datetime-local" 
-              className="cal-input"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-              required
-            />
-          </div>
-          
-          <div className="cal-form-row" style={{justifyContent:'flex-start', gap:'12px'}}>
-            <span className="cal-label">Quick Range:</span>
-            <button type="button" className="m-btn m-btn-secondary" onClick={setTimeRangeToday}>Today</button>
-            <button type="button" className="m-btn m-btn-secondary" onClick={setTimeRangeLast24h}>Last 24 Hours</button>
-          </div>
-          
-          <div className="cal-form-row">
-            <label className="cal-label">Reference Temperature</label>
-            <input 
-              type="number" 
-              step="0.1"
-              className="cal-input" 
-              placeholder="°C (leave blank to use average of all units)"
-              value={referenceTemp}
-              onChange={(e) => setReferenceTemp(e.target.value)}
-            />
-          </div>
-          
-          <div className="cal-form-row">
-            <label className="cal-label">Notes</label>
-            <input 
-              type="text" 
-              className="cal-input" 
-              placeholder="Ambient notes..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </div>
-          
-          <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-            <button type="button" className="m-btn m-btn-secondary" onClick={handlePreview} disabled={loading}>Preview Data</button>
-            <button type="submit" className="m-btn m-btn-primary" disabled={loading}>Create Session</button>
-          </div>
-        </form>
-        
-        {preview && (
-          <div className="cal-preview">
-            {['a', 'b', 'c'].map(unit => (
-              <div key={unit} className="cal-preview-unit">
-                <div className="cal-preview-label">Unit {unit.toUpperCase()}</div>
-                {preview[unit] && preview[unit].count > 0 ? (
-                  <>
-                    <div className="cal-preview-value">
-                      {preview[unit].mean != null ? (preview[unit].mean*9/5+32).toFixed(1) + '°F' : '—'}
-                    </div>
-                    <div className="cal-preview-range">
-                      {preview[unit].min != null ? (preview[unit].min*9/5+32).toFixed(1) : '—'}–{preview[unit].max != null ? (preview[unit].max*9/5+32).toFixed(1) : '—'}°F ({preview[unit].count} pts)
-                    </div>
-                  </>
-                ) : (
-                  <div className="cal-preview-value" style={{ color: 'rgba(255,255,255,0.15)' }}>No readings</div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      
-      {/* Existing Sessions */}
-      <div className="cal-section">
-        <div className="cal-section-title">
-          <span className="material-symbols-outlined" style={{color: 'var(--md-sys-color-primary)'}}>list_alt</span>
-          <span>Calibration Sessions ({sessions.length})</span>
-        </div>
-        
-        {sessions.length === 0 ? (
-          <div style={{color:'var(--md-sys-color-on-surface-variant)', fontSize:'0.8rem', fontStyle:'italic', padding:'10px 0'}}>No sessions. Add a session to enable custom fitting.</div>
-        ) : (
-          <div className="cal-sessions">
-            {sessions.map(session => (
-              <div key={session.id} className="cal-session-card">
-                <div className="cal-session-info">
-                  <div className="cal-session-name">{session.name || 'Untitled session'}</div>
-                  <div className="cal-session-meta">
-                    {new Date(session.start_time * 1000).toLocaleString()} – {new Date(session.end_time * 1000).toLocaleTimeString()}
-                  </div>
-                  {session.reference_temp != null && (
-                    <div className="cal-session-ref">Reference: {(session.reference_temp*9/5+32).toFixed(2)}°F</div>
-                  )}
-                  {session.notes && <div style={{ fontSize: '0.72rem', color: 'var(--md-sys-color-on-surface-variant)' }}>{session.notes}</div>}
-                </div>
-                <button className="m-btn m-btn-danger" style={{padding:'6px 12px', borderRadius:'8px'}} onClick={() => handleDeleteSession(session.id)}>Delete</button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      
-      {/* Compute Calibration Coefficients */}
-      <div className="cal-section">
-        <div className="cal-section-title">
-          <span className="material-symbols-outlined" style={{color: 'var(--md-sys-color-primary)'}}>calculate</span>
-          <span>Fit Polynomial Coefficients</span>
-        </div>
-        <p className="cal-description">
-          Fit a custom correction curve using the saved sessions. degree 2 (quadratic) requires 3+ points and is highly recommended.
-        </p>
-        
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <label style={{ fontSize: '0.8rem', color: 'var(--md-sys-color-on-surface-variant)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>Polynomial Degree:</span>
-            <select 
-              className="cal-input" 
-              value={computeDegree}
-              onChange={(e) => setComputeDegree(parseInt(e.target.value))}
-              style={{ flex: 'none', width: '100px', padding: '6px' }}
-            >
-              <option value={1}>1 (Linear)</option>
-              <option value={2}>2 (Quadratic)</option>
-              <option value={3}>3 (Cubic)</option>
-            </select>
-          </label>
-          <button className="m-btn m-btn-primary" onClick={handleComputeCalibration} disabled={loading || sessions.length === 0}>
-            Compute Curves
+          <button 
+            className="m-btn m-btn-danger" 
+            onClick={handleClearCalibration} 
+            disabled={loading || !hasActiveCoeffs}
+          >
+            Clear Calibration
           </button>
         </div>
+
+        {summary && (
+          <div style={{
+            marginTop: '20px',
+            padding: '16px',
+            background: 'rgba(255,255,255,0.02)',
+            borderRadius: '12px',
+            border: '1px solid var(--md-sys-color-outline)',
+          }}>
+            <h4 style={{ color: 'var(--md-sys-color-primary)', fontSize: '0.9rem', marginBottom: '12px' }}>
+              Calibration Summary ({summary.method === 'linear' ? 'Linear Fit' : 'Offset Fallback'})
+            </h4>
+            <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '6px', color: 'var(--md-sys-color-on-surface-variant)' }}>
+              <div><strong>Paired readings used:</strong> {summary.numPaired} timestamps</div>
+              <div>
+                <strong>Average Spread Before:</strong> {summary.beforeAverageSpread.toFixed(3)}°C ({(summary.beforeAverageSpread*9/5).toFixed(3)}°F)
+              </div>
+              <div>
+                <strong>Average Spread After:</strong> <span style={{ color: '#5fdb8a', fontWeight: 'bold' }}>{summary.afterAverageSpread.toFixed(3)}°C ({(summary.afterAverageSpread*9/5).toFixed(3)}°F)</span>
+              </div>
+              <div style={{ marginTop: '10px' }}>
+                <strong>Formulas & Accuracy:</strong>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginTop: '6px' }}>
+                  {['a', 'b', 'c'].map(u => {
+                    const r = summary.results[u];
+                    if (!r) return null;
+                    return (
+                      <div key={u} style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.15)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ color: '#fff', fontWeight: '600', fontSize: '0.75rem', marginBottom: '4px' }}>Unit {u.toUpperCase()}</div>
+                        <div style={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>{formatFormula(r.coeffs, summary.method)}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--md-sys-color-on-surface-variant)', marginTop: '4px' }}>RMSE: {r.rmse.toFixed(4)}°C</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-      
-      {/* Active Coefficients */}
+
+      {/* Active coefficients panel */}
       <div className="cal-section">
         <div className="cal-section-title">
           <span className="material-symbols-outlined" style={{color: '#5fdb8a'}}>fact_check</span>
           <span>Active Calibration Coefficients</span>
         </div>
         
-        {Object.keys(coefficients).length === 0 ? (
-          <div style={{color:'var(--md-sys-color-on-surface-variant)', fontSize:'0.8rem', fontStyle:'italic', padding:'10px 0'}}>No active coefficients. Compute coefficients above to apply them.</div>
+        {!hasActiveCoeffs ? (
+          <div style={{color:'var(--md-sys-color-on-surface-variant)', fontSize:'0.8rem', fontStyle:'italic', padding:'10px 0'}}>
+            No active coefficients. Build calibration above to apply them.
+          </div>
         ) : (
           <div className="cal-coeffs">
             {['a', 'b', 'c'].map(unitId => {
               const coeff = coefficients[unitId];
               if (!coeff) return null;
               
+              const method = coeff.c1 === 1 && coeff.c2 === 0 && coeff.c3 === 0 ? 'offset' : 'linear';
+              
               return (
                 <div key={unitId} className="cal-coeff-card">
                   <div className="cal-coeff-title">
                     <span>Unit {unitId.toUpperCase()}</span>
-                    <button className="m-btn m-btn-danger" style={{padding:'4px 8px', borderRadius:'6px', fontSize:'0.7rem'}} onClick={() => handleDeleteCoefficients(unitId)}>Clear</button>
+                    <span className="cal-coeff-tag" style={{
+                      fontSize: '0.65rem',
+                      background: 'rgba(255,255,255,0.08)',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      color: 'var(--md-sys-color-primary)'
+                    }}>
+                      {method === 'offset' ? 'Offset' : 'Linear'}
+                    </span>
                   </div>
                   
                   <div className="cal-coeff-row">
-                    <span className="cal-coeff-label">Degree:</span>
-                    <span className="cal-coeff-value">{coeff.degree}</span>
+                    <span className="cal-coeff-label">Formula:</span>
+                    <span className="cal-coeff-value" style={{ fontFamily: 'monospace' }}>
+                      {formatFormula([coeff.c0, coeff.c1, coeff.c2, coeff.c3], method)}
+                    </span>
                   </div>
                   
                   <div className="cal-coeff-row">
-                    <span className="cal-coeff-label">c0 (offset):</span>
+                    <span className="cal-coeff-label">c0 (intercept):</span>
                     <span className="cal-coeff-value">{coeff.c0 != null ? coeff.c0.toFixed(5) : '—'}</span>
                   </div>
                   
@@ -2358,27 +1833,15 @@ function CalibrationPanel() {
                     <span className="cal-coeff-value">{coeff.c1 != null ? coeff.c1.toFixed(5) : '—'}</span>
                   </div>
                   
-                  {coeff.degree >= 2 && (
-                    <div className="cal-coeff-row">
-                      <span className="cal-coeff-label">c2 (quadratic):</span>
-                      <span className="cal-coeff-value">{coeff.c2 != null ? coeff.c2.toFixed(6) : '—'}</span>
-                    </div>
-                  )}
-                  
-                  {coeff.degree >= 3 && (
-                    <div className="cal-coeff-row">
-                      <span className="cal-coeff-label">c3 (cubic):</span>
-                      <span className="cal-coeff-value">{coeff.c3 != null ? coeff.c3.toFixed(6) : '—'}</span>
-                    </div>
-                  )}
-                  
                   <div className="cal-coeff-row">
                     <span className="cal-coeff-label">Fitting RMSE:</span>
-                    <span className="cal-coeff-rmse">{coeff.rmse != null ? coeff.rmse.toFixed(3) + '°C' : '—'}</span>
+                    <span className="cal-coeff-rmse" style={{ color: '#5fdb8a' }}>
+                      {coeff.rmse != null ? coeff.rmse.toFixed(3) + '°C' : '—'}
+                    </span>
                   </div>
                   
                   <div className="cal-coeff-row">
-                    <span className="cal-coeff-label font-size-0.65">Data Points:</span>
+                    <span className="cal-coeff-label">Data Points:</span>
                     <span className="cal-coeff-value">{coeff.num_points}</span>
                   </div>
                 </div>
@@ -2404,23 +1867,35 @@ function App() {
   const [busyB, setBusyB]     = useState(false);
   const [busyC, setBusyC]     = useState(false);
 
-  // Per-unit local calibration offsets in °F — persisted to localStorage
-  const loadOffsets = () => {
-    try { return JSON.parse(localStorage.getItem('tempOffsets') || 'null') || { a: 0, b: 0, c: 0 }; }
-    catch { return { a: 0, b: 0, c: 0 }; }
-  };
-  const [offsets, setOffsets] = useState(loadOffsets);
-  
   // Calibration coefficients (polynomial)
   const [calibCoeffs, setCalibCoeffs] = useState({});
-  
-  function setOffset(unit, val) {
-    setOffsets(prev => {
-      const next = { ...prev, [unit]: val };
-      try { localStorage.setItem('tempOffsets', JSON.stringify(next)); } catch {}
-      return next;
-    });
-  }
+
+  // Live RSSI and temperatures via WebSocket
+  useRssiWS(dispatch);
+
+  // MAC and port information
+  useEffect(() => {
+    fetch('/api/info')
+      .then(r => r.json())
+      .then(d => dispatch({ type: 'INFO', data: d }))
+      .catch(() => {});
+  }, []);
+
+  // Fetch calibration coefficients
+  const fetchActiveCoefficients = () => {
+    fetch('/api/calibration/coefficients')
+      .then(r => r.json())
+      .then(d => { if (d.ok) setCalibCoeffs(d.coefficients); })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchActiveCoefficients();
+    window.onCalibrationChanged = fetchActiveCoefficients;
+    return () => {
+      window.onCalibrationChanged = null;
+    };
+  }, [activeTab]);
 
   // Sync-to-average includes — persisted to localStorage
   const loadSyncIncludes = () => {
@@ -2604,16 +2079,6 @@ function App() {
 
   const { rssi, colors, modeB, modeC, tempA, tempB, tempC, log, info, wsConnected, unitAReachable } = state;
 
-  const canSync = () => {
-    const rawFs = {
-      a: tempA ? (tempA.temp_c * 9/5 + 32) : null,
-      b: tempB ? (tempB.temp_c * 9/5 + 32) : null,
-      c: tempC ? (tempC.temp_c * 9/5 + 32) : null,
-    };
-    const included = ['a','b','c'].filter(u => syncIncludes[u] && rawFs[u] !== null);
-    return included.length >= 2;
-  };
-
   const renderSignalRow = (label, val) => {
     if (val === null || val === undefined) {
       return (
@@ -2705,68 +2170,6 @@ function App() {
         <div className={'tab-panel' + (activeTab === 'controls' ? ' active' : '')}>
           
           <div className="status-row">
-            <div className="sync-panel">
-              <div className="panel-title">
-                <span>Synchronized Offsets</span>
-                <span className="sync-sensor-tag" style={{fontSize:'0.65rem'}}>Fahrenheit</span>
-              </div>
-              <div className="sync-rows">
-                <div className="sync-row">
-                  <label className="sync-check">
-                    <input
-                      type="checkbox"
-                      checked={syncIncludes.a}
-                      disabled={!tempA}
-                      onChange={() => toggleSyncInclude('a')}
-                    />
-                    <span className="sync-unit-name">Unit A</span>
-                    <span className="sync-sensor-tag">{info.unitA ? info.unitA.sensor : 'DHT22'}</span>
-                  </label>
-                  <span className="sync-disp-temp">
-                    {tempA && tempA.temp_c != null ? ((tempA.temp_c * 9/5 + 32) + (offsets.a || 0)).toFixed(1) + ' °F' : '—'}
-                  </span>
-                </div>
-                <div className="sync-row">
-                  <label className="sync-check">
-                    <input
-                      type="checkbox"
-                      checked={syncIncludes.b}
-                      disabled={!tempB}
-                      onChange={() => toggleSyncInclude('b')}
-                    />
-                    <span className="sync-unit-name">Unit B</span>
-                    <span className="sync-sensor-tag">{info.unitB ? info.unitB.sensor : 'SHT30'}</span>
-                  </label>
-                  <span className="sync-disp-temp">
-                    {tempB && tempB.temp_c != null ? ((tempB.temp_c * 9/5 + 32) + (offsets.b || 0)).toFixed(1) + ' °F' : '—'}
-                  </span>
-                </div>
-                <div className="sync-row">
-                  <label className="sync-check">
-                    <input
-                      type="checkbox"
-                      checked={syncIncludes.c}
-                      disabled={!tempC}
-                      onChange={() => toggleSyncInclude('c')}
-                    />
-                    <span className="sync-unit-name">Unit C</span>
-                    <span className="sync-sensor-tag">{info.unitC ? info.unitC.sensor : 'DHT11'}</span>
-                  </label>
-                  <span className="sync-disp-temp">
-                    {tempC && tempC.temp_c != null ? ((tempC.temp_c * 9/5 + 32) + (offsets.c || 0)).toFixed(1) + ' °F' : '—'}
-                  </span>
-                </div>
-                <div className="sync-controls">
-                  <button className="m-btn m-btn-primary" onClick={syncToAverage} disabled={!canSync()}>
-                    Align Offsets
-                  </button>
-                  <div className="sync-hint">
-                    Equalizes temperature readouts to their collective average.
-                  </div>
-                </div>
-              </div>
-            </div>
-            
             <SignalPanel rssi={rssi} wsConnected={wsConnected} />
           </div>
 
@@ -2825,11 +2228,10 @@ function App() {
               
               <TempBadge 
                 data={tempA} 
-                offset={offsets.a} 
                 unitId="a"
                 calibratedTempC={tempA ? applyCalibratedTemp('a', tempA.temp_c) : null}
+                hasCal={calibCoeffs && !!calibCoeffs.a}
               />
-              <TempOffset value={offsets.a} onChange={v => setOffset('a', v)} />
             </div>
 
             {/* ── UNIT B ── */}
@@ -2912,11 +2314,10 @@ function App() {
               
               <TempBadge 
                 data={tempB} 
-                offset={offsets.b} 
                 unitId="b"
                 calibratedTempC={tempB ? applyCalibratedTemp('b', tempB.temp_c) : null}
+                hasCal={calibCoeffs && !!calibCoeffs.b}
               />
-              <TempOffset value={offsets.b} onChange={v => setOffset('b', v)} />
             </div>
 
             {/* ── UNIT C ── */}
@@ -2999,11 +2400,10 @@ function App() {
               
               <TempBadge 
                 data={tempC} 
-                offset={offsets.c} 
                 unitId="c"
                 calibratedTempC={tempC ? applyCalibratedTemp('c', tempC.temp_c) : null}
+                hasCal={calibCoeffs && !!calibCoeffs.c}
               />
-              <TempOffset value={offsets.c} onChange={v => setOffset('c', v)} />
             </div>
 
           </div>
