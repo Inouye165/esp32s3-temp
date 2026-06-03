@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
@@ -31,24 +31,31 @@ app.use(express.static(path.join(__dirname, 'public'), {
 const httpServer = http.createServer(app);
 const wss = new WebSocket.Server({ server: httpServer });
 
-// ── Background RSSI polling: fetch from ESP32 every 300 ms, push via WS ───────
+// ── Background RSSI polling: fetch from ESP32 every 3 seconds, push via WS ────
 let rssiCache = null;
+let rssiTimer = null;
 
 async function pollRssi() {
-    if (!ESP_IP) return;
+    if (!ESP_IP) {
+        rssiTimer = setTimeout(pollRssi, 3000);
+        return;
+    }
     try {
         const response = await fetch(`http://${ESP_IP}/rssi`,
-            { signal: AbortSignal.timeout(800) });
+            { signal: AbortSignal.timeout(1500) });
         rssiCache = await response.json();
         const msg = JSON.stringify({ type: 'rssi', data: rssiCache });
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) client.send(msg);
         });
-    } catch {
+    } catch (err) {
         // ESP32 unreachable — clients keep last known values
+    } finally {
+        rssiTimer = setTimeout(pollRssi, 3000);
     }
 }
-setInterval(pollRssi, 300);
+// Start RSSI polling immediately
+rssiTimer = setTimeout(pollRssi, 2000);
 
 // Send cached RSSI to newly connected WebSocket clients
 wss.on('connection', ws => {
@@ -60,6 +67,16 @@ let tempCache = null;
 
 async function pollTemperature() {
     if (!ESP_IP) return;
+    
+    try {
+        console.log('[temp poll] Triggering synchronized read on ESP32...');
+        await fetch(`http://${ESP_IP}/sync`, { signal: AbortSignal.timeout(3000) });
+    } catch (err) {
+        console.warn(`[temp poll] Sync read trigger failed: ${err.message}`);
+    }
+    
+    // Wait 1.5 seconds for ESP32 to receive from all units and update its cache
+    await new Promise(resolve => setTimeout(resolve, 1500));
     
     const timestamp = Math.floor(Date.now() / 1000);
     const readings = {};
@@ -255,7 +272,18 @@ app.post('/api/color/c', async (req, res) => {
     await callEsp('forward_c', r, g, b, res);
 });
 
-app.get('/api/temp_a', async (_req, res) => {
+app.get('/api/temp_a', async (req, res) => {
+    if (req.query.live !== 'true' && tempCache && tempCache.readings.a) {
+        const data = tempCache.readings.a;
+        const age = Math.floor(Date.now() / 1000) - tempCache.timestamp;
+        return res.json({
+            ok: data.ok,
+            temp_c: data.tempC,
+            humidity: data.humidity,
+            age: age
+        });
+    }
+
     if (!ESP_IP) return res.status(503).json({ ok: false, message: 'ESP_IP not configured' });
     const url = `http://${ESP_IP}/temp_a`;
     try {
@@ -267,7 +295,18 @@ app.get('/api/temp_a', async (_req, res) => {
     }
 });
 
-app.get('/api/temp_b', async (_req, res) => {
+app.get('/api/temp_b', async (req, res) => {
+    if (req.query.live !== 'true' && tempCache && tempCache.readings.b) {
+        const data = tempCache.readings.b;
+        const age = Math.floor(Date.now() / 1000) - tempCache.timestamp;
+        return res.json({
+            ok: data.ok,
+            temp_c: data.tempC,
+            humidity: data.humidity,
+            age: age
+        });
+    }
+
     if (!ESP_IP) return res.status(503).json({ ok: false, message: 'ESP_IP not configured' });
     const url = `http://${ESP_IP}/temp_b`;
     try {
@@ -279,7 +318,18 @@ app.get('/api/temp_b', async (_req, res) => {
     }
 });
 
-app.get('/api/temp_c', async (_req, res) => {
+app.get('/api/temp_c', async (req, res) => {
+    if (req.query.live !== 'true' && tempCache && tempCache.readings.c) {
+        const data = tempCache.readings.c;
+        const age = Math.floor(Date.now() / 1000) - tempCache.timestamp;
+        return res.json({
+            ok: data.ok,
+            temp_c: data.tempC,
+            humidity: data.humidity,
+            age: age
+        });
+    }
+
     if (!ESP_IP) return res.status(503).json({ ok: false, message: 'ESP_IP not configured' });
     const url = `http://${ESP_IP}/temp_c`;
     try {
@@ -292,7 +342,18 @@ app.get('/api/temp_c', async (_req, res) => {
 });
 
 // Alias for backward compat
-app.get('/api/temp', async (_req, res) => {
+app.get('/api/temp', async (req, res) => {
+    if (req.query.live !== 'true' && tempCache && tempCache.readings.c) {
+        const data = tempCache.readings.c;
+        const age = Math.floor(Date.now() / 1000) - tempCache.timestamp;
+        return res.json({
+            ok: data.ok,
+            temp_c: data.tempC,
+            humidity: data.humidity,
+            age: age
+        });
+    }
+
     if (!ESP_IP) return res.status(503).json({ ok: false, message: 'ESP_IP not configured' });
     const url = `http://${ESP_IP}/temp`;
     try {

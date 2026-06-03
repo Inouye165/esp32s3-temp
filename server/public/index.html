@@ -5,431 +5,1048 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ESP32 Mesh Dashboard</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
+  :root {
+    --md-sys-color-background: #0e0e11;
+    --md-sys-color-on-background: #e3e2e6;
+    --md-sys-color-surface: #1a1a1f;
+    --md-sys-color-surface-variant: #25252b;
+    --md-sys-color-on-surface: #e3e2e6;
+    --md-sys-color-on-surface-variant: #c7c6ca;
+    --md-sys-color-outline: #2c2c35;
+    --md-sys-color-primary: #a8c7fa;
+    --md-sys-color-on-primary: #062e6f;
+    --md-sys-color-primary-container: #0842a0;
+    --md-sys-color-on-primary-container: #d3e3fd;
+    --md-sys-color-error: #ffb4ab;
+    --md-sys-color-on-error: #690005;
+    --md-sys-color-error-container: #3d0002;
+    --md-sys-color-on-error-container: #ffdad6;
+    
+    --unit-color-a: #7ecfff;
+    --unit-color-b: #5fdb8a;
+    --unit-color-c: #facc15;
+  }
+
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: #141414; color: #e0e0e0;
-    font-family: "Segoe UI", system-ui, sans-serif;
-    display: flex; flex-direction: column; align-items: stretch;
-    height: 100vh; overflow: hidden; padding: 12px 16px;
-  }
-  h1 { font-size: 1.1rem; letter-spacing: .06em; margin-bottom: 10px; color: #fff; }
   
-  /* ── tabs ── */
+  body {
+    background: var(--md-sys-color-background);
+    color: var(--md-sys-color-on-background);
+    font-family: "Inter", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    height: 100vh;
+    overflow: hidden;
+    padding: 16px 24px;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--md-sys-color-outline);
+  }
+
+  .header-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  h1 {
+    font-family: "Outfit", sans-serif;
+    font-size: 1.6rem;
+    font-weight: 600;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .header-subtitle {
+    font-size: 0.8rem;
+    color: var(--md-sys-color-on-surface-variant);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ── Material Tabs ── */
   .tabs {
-    display: flex; gap: 4px; margin-bottom: 10px; width: 100%;
-    border-bottom: 1px solid #2c2c2c;
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    width: 100%;
   }
+
   .tab-btn {
-    padding: 8px 16px; background: #1a1a1a; border: none; color: #888;
-    cursor: pointer; font-size: .85rem; border-radius: 6px 6px 0 0;
-    transition: all .15s; border: 1px solid transparent; border-bottom: none;
+    padding: 10px 20px;
+    background: transparent;
+    border: none;
+    color: var(--md-sys-color-on-surface-variant);
+    cursor: pointer;
+    font-family: "Outfit", sans-serif;
+    font-size: 0.95rem;
+    font-weight: 500;
+    border-radius: 20px;
+    transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
-  .tab-btn:hover { background: #222; color: #aaa; }
+
+  .tab-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+  }
+
   .tab-btn.active {
-    background: #252525; color: #7ecfff; font-weight: 600;
-    border-color: #2c2c2c; border-bottom: 2px solid #7ecfff;
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
   }
+
   .tab-content {
-    width: 100%; flex: 1; overflow-y: auto;
-    padding: 12px 0;
+    width: 100%;
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 4px;
   }
+
   .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
+  .tab-panel.active {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    animation: fadeIn 0.25s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 
   /* ── grid ── */
   .grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px; width: 100%;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    width: 100%;
   }
 
-  /* ── compact status row ── */
-  .status-row {
-    display: flex; gap: 12px; width: 100%; margin-bottom: 10px;
-    flex-wrap: wrap; align-items: center; font-size: .78rem;
-  }
-  .status-box {
-    background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 8px;
-    padding: 8px 12px; display: flex; align-items: center; gap: 8px;
-    flex: 1; min-width: 200px;
-  }
-  .status-label { color: #555; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; }
-  .status-value { color: #7ecfff; font-weight: 600; font-family: monospace; }
-  
-  /* ── unit card ── */
-  .unit {
-    background: #1e1e1e; border: 1px solid #2c2c2c; border-radius: 10px;
-    padding: 12px; display: flex; flex-direction: column; gap: 8px;
-    transition: all .3s ease;
+  /* ── Material Card Base ── */
+  .m-card {
+    background: var(--md-sys-color-surface);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: all 0.3s cubic-bezier(0.2, 0, 0, 1);
     position: relative;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
+
+  .m-card:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+
+  /* ── status row ── */
+  .status-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+    width: 100%;
+    margin-bottom: 4px;
+  }
+
+  /* ── unit card specifics ── */
   .unit.alert {
-    background: #2a1a1a;
-    border: 2px solid #d97706;
-    box-shadow: 0 0 20px rgba(217, 119, 6, 0.3), inset 0 0 30px rgba(217, 119, 6, 0.08);
-    animation: alertPulse 2s ease-in-out infinite;
+    background: var(--md-sys-color-error-container);
+    border-color: var(--md-sys-color-error);
+    box-shadow: 0 0 20px rgba(255, 180, 171, 0.1);
   }
-  @keyframes alertPulse {
-    0%, 100% { box-shadow: 0 0 20px rgba(217, 119, 6, 0.3), inset 0 0 30px rgba(217, 119, 6, 0.08); }
-    50% { box-shadow: 0 0 30px rgba(217, 119, 6, 0.5), inset 0 0 40px rgba(217, 119, 6, 0.12); }
-  }
+
   .unit-alert-banner {
-    background: linear-gradient(135deg, #d97706, #ea580c);
-    color: #fff;
-    padding: 10px 14px;
-    border-radius: 8px;
-    font-size: .82rem;
+    background: var(--md-sys-color-error);
+    color: var(--md-sys-color-on-error);
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-size: 0.8rem;
     font-weight: 600;
     text-align: center;
-    margin-bottom: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    box-shadow: 0 2px 8px rgba(217, 119, 6, 0.4);
+    gap: 6px;
   }
-  .unit-alert-icon {
-    font-size: 1.2rem;
-    animation: alertBounce 1s ease-in-out infinite;
+
+  .unit-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
   }
-  @keyframes alertBounce {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-3px); }
-  }
-  .unit-header { display: flex; align-items: center; gap: 10px; }
+
   .unit-swatch {
-    width: 34px; height: 34px; border-radius: 8px;
-    border: 1px solid #444; background: #000; flex-shrink: 0;
-    transition: background .15s;
-  }
-  .unit-label { font-weight: 600; font-size: .9rem; }
-  .unit-mac { font-size: .65rem; color: #888; letter-spacing: .04em; margin-top: 2px; }
-  .unit-ip { font-size: .7rem; color: #5fdb8a; letter-spacing: .03em; margin-top: 2px; font-family: monospace; }
-  
-  /* ── compact color controls ── */
-  .color-toggle {
-    background: #252525; border: 1px solid #333; border-radius: 6px;
-    padding: 5px 10px; color: #888; font-size: .75rem; cursor: pointer;
-    transition: all .15s; display: flex; align-items: center; gap: 6px;
-  }
-  .color-toggle:hover { background: #2d2d2d; color: #aaa; }
-  .color-toggle-indicator {
-    width: 16px; height: 16px; border-radius: 4px; border: 1px solid #444;
-  }
-  .color-section {
-    max-height: 0; overflow: hidden; transition: max-height .3s ease;
-  }
-  .color-section.open {
-    max-height: 150px;
-  }
-
-  /* ── colour picker ── */
-  .picker-row { display: flex; align-items: center; gap: 10px; }
-  .picker-row input[type=color] {
-    width: 48px; height: 40px; border: none; border-radius: 6px;
-    cursor: pointer; background: none; padding: 0;
-  }
-  .hex-input {
-    flex: 1; background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0;
-    border-radius: 6px; padding: 6px 10px; font-size: .9rem; font-family: monospace;
-  }
-  .hex-input:focus { outline: none; border-color: #666; }
-
-  /* ── mode radio ── */
-  .mode-row { display: flex; gap: 14px; font-size: .85rem; }
-  .mode-row label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
-
-  /* ── send button ── */
-  .send-btn {
-    width: 100%; padding: 9px; border: none; border-radius: 8px;
-    background: #2d5af5; color: #fff; font-weight: 600; font-size: .95rem;
-    cursor: pointer; transition: background .15s;
-  }
-  .send-btn:hover:not(:disabled) { background: #4068ff; }
-  .send-btn:disabled { opacity: .45; cursor: default; }
-
-  /* ── off button ── */
-  .off-btn {
-    width: 100%; padding: 9px; border: none; border-radius: 8px;
-    background: #3a3a3a; color: #e0e0e0; font-weight: 600; font-size: .95rem;
-    cursor: pointer; transition: background .15s;
-  }
-  .off-btn:hover:not(:disabled) { background: #4a4a4a; }
-  .off-btn:disabled { opacity: .45; cursor: default; }
-
-  /* ── status ── */
-  .status {
-    font-size: .78rem; min-height: 1.1em; padding: 4px 8px;
-    border-radius: 5px; transition: background .2s;
-  }
-  .status.ok  { color: #5fdb8a; background: #0d2b1a; }
-  .status.err { color: #f07070; background: #2b0f0f; }
-
-  /* ── temp badge ── */
-  .temp-badge {
-    background: #202020; border: 1px solid #2c2c2c; border-radius: 8px;
-    padding: 10px 14px; display: flex; gap: 18px; font-size: .88rem;
-    align-items: center; flex-wrap: wrap;
-  }
-  .temp-badge .lbl { color: #888; font-size: .72rem; margin-bottom: 1px; text-transform: uppercase; }
-  .temp-badge .val { font-size: 1.2rem; font-weight: 700; color: #7ecfff; }
-  .temp-badge .hum .val { color: #9de87a; }
-  .temp-badge .age-txt { font-size: .7rem; color: #555; margin-top: 3px; }
-  .temp-badge .no-data { color: #555; font-style: italic; font-size: .82rem; }
-
-  /* ── offset row ── */
-  .offset-row {
-    display: flex; align-items: center; gap: 6px;
-    font-size: .75rem; color: #666;
-  }
-  .offset-row input[type=number] {
-    width: 62px; background: #252525; border: 1px solid #333; color: #aaa;
-    border-radius: 4px; padding: 3px 6px; font-size: .75rem;
-    -moz-appearance: textfield;
-  }
-  .offset-row input[type=number]::-webkit-outer-spin-button,
-  .offset-row input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
-
-  /* ── signal panel ── */
-  .signal-panel {
-    background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 8px;
-    padding: 8px 12px; flex: 1; min-width: 300px;
-  }
-  .panel-title {
-    font-size: .7rem; color: #555; letter-spacing: .08em;
-    text-transform: uppercase; margin-bottom: 6px;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .ws-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    display: inline-block; transition: background .4s;
-  }
-  .ws-dot.connected    { background: #4ade80; box-shadow: 0 0 5px #4ade8099; }
-  .ws-dot.disconnected { background: #555; }
-
-  .signal-rows { display: flex; gap: 12px; flex-wrap: wrap; }
-  .signal-row {
-    display: flex; align-items: center; gap: 6px; font-size: .75rem;
-  }
-  .signal-row-label { color: #888; min-width: 50px; }
-  .signal-bars { display: flex; align-items: flex-end; gap: 2px; height: 16px; }
-  .bar {
-    border-radius: 2px; background: #333; transition: background .35s;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
     flex-shrink: 0;
+    transition: background 0.2s;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
   }
-  .bar-1 { width: 5px; height:  4px; }
-  .bar-2 { width: 5px; height:  6px; }
-  .bar-3 { width: 5px; height:  8px; }
-  .bar-4 { width: 5px; height: 12px; }
-  .bar-5 { width: 5px; height: 14px; }
-  .signal-dbm  { font-size: .75rem; font-weight: 600; font-family: monospace; }
-  .signal-qual { font-size: .68rem; color: #666; }
 
-  /* ── sensor chip ── */
-  .unit-sensor-chip {
-    font-size: .68rem; color: #5fdb8a; background: #0d2b1a;
-    border-radius: 4px; padding: 2px 7px; letter-spacing: .04em;
-    display: inline-block; margin-top: 3px;
+  .unit-title-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
   }
+
+  .unit-label {
+    font-family: "Outfit", sans-serif;
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
   .unit-role-chip {
-    font-size: .62rem; color: #7ecfff; background: #102538;
-    border-radius: 4px; padding: 2px 7px; letter-spacing: .08em;
-    display: inline-block; margin-left: 6px; text-transform: uppercase; font-weight: 600;
+    font-size: 0.65rem;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--md-sys-color-on-surface-variant);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 6px;
+    padding: 2px 6px;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.05em;
   }
-  .unit-meta { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
-  .unit-meta-row { font-size: .72rem; color: #888; font-family: monospace; display: flex; gap: 6px; align-items: center; }
-  .unit-meta-label { color: #555; min-width: 36px; }
-  .unit-meta-val { color: #aaa; }
+
+  .unit-sensor-chip {
+    font-size: 0.72rem;
+    color: var(--md-sys-color-primary);
+    background: rgba(168, 199, 250, 0.08);
+    border-radius: 6px;
+    padding: 2px 6px;
+    align-self: flex-start;
+    margin-top: 4px;
+    font-family: monospace;
+  }
+
+  .unit-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+    background: rgba(0,0,0,0.15);
+    padding: 8px 12px;
+    border-radius: 10px;
+  }
+
+  .unit-meta-row {
+    font-size: 0.72rem;
+    color: var(--md-sys-color-on-surface-variant);
+    font-family: monospace;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .unit-meta-label {
+    color: rgba(255, 255, 255, 0.35);
+  }
+
+  .unit-meta-val {
+    color: var(--md-sys-color-on-surface);
+  }
+
   .unit-meta-val.ip { color: #5fdb8a; }
   .unit-meta-val.transport { color: #7ecfff; }
 
-  /* ── sync panel ── */
+  /* ── color control section ── */
+  .color-control-box {
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .color-toggle {
+    background: rgba(255, 255, 255, 0.02);
+    padding: 10px 14px;
+    color: var(--md-sys-color-on-surface);
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .color-toggle:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .color-toggle-indicator {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+
+  .color-section {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s cubic-bezier(0.2, 0, 0, 1);
+    background: rgba(0,0,0,0.1);
+  }
+
+  .color-section.open {
+    max-height: 190px;
+    padding: 12px;
+    border-top: 1px solid var(--md-sys-color-outline);
+  }
+
+  .picker-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .picker-row input[type=color] {
+    width: 44px;
+    height: 36px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    background: none;
+  }
+
+  .hex-input {
+    flex: 1;
+    background: var(--md-sys-color-surface-variant);
+    border: 1px solid var(--md-sys-color-outline);
+    color: #fff;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    font-family: monospace;
+    transition: border-color 0.2s;
+  }
+
+  .hex-input:focus {
+    outline: none;
+    border-color: var(--md-sys-color-primary);
+  }
+
+  .picker-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  /* ── Buttons ── */
+  .m-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.82rem;
+    font-family: "Outfit", sans-serif;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .m-btn-primary {
+    background: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+  }
+
+  .m-btn-primary:hover:not(:disabled) {
+    background: #c3ddff;
+    box-shadow: 0 2px 8px rgba(168, 199, 250, 0.4);
+  }
+
+  .m-btn-secondary {
+    background: var(--md-sys-color-surface-variant);
+    color: var(--md-sys-color-on-surface);
+    border: 1px solid var(--md-sys-color-outline);
+  }
+
+  .m-btn-secondary:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .m-btn-danger {
+    background: rgba(255, 180, 171, 0.15);
+    color: var(--md-sys-color-error);
+    border: 1px solid rgba(255, 180, 171, 0.2);
+  }
+
+  .m-btn-danger:hover:not(:disabled) {
+    background: rgba(255, 180, 171, 0.25);
+  }
+
+  .m-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .picker-actions .m-btn {
+    flex: 1;
+  }
+
+  .status-badge {
+    font-size: 0.72rem;
+    padding: 4px 8px;
+    border-radius: 6px;
+    margin-top: 8px;
+    text-align: center;
+    font-family: monospace;
+  }
+
+  .status-badge.ok  { color: #5fdb8a; background: rgba(95, 219, 138, 0.08); border: 1px solid rgba(95, 219, 138, 0.15); }
+  .status-badge.err { color: #f07070; background: rgba(240, 112, 112, 0.08); border: 1px solid rgba(240, 112, 112, 0.15); }
+
+  /* ── Temperature readings UI ── */
+  .temp-display {
+    background: rgba(0,0,0,0.15);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .temp-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .temp-row .label-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: var(--md-sys-color-on-surface-variant);
+  }
+
+  .temp-row .val {
+    font-family: "Outfit", monospace;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .temp-display .humidity-val {
+    color: #5fdb8a;
+  }
+
+  .temp-display .calibrated-row {
+    border-top: 1px dashed var(--md-sys-color-outline);
+    padding-top: 6px;
+    margin-top: 2px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #5fdb8a;
+  }
+
+  .temp-display .calibrated-val {
+    font-weight: 600;
+    font-family: monospace;
+  }
+
+  .temp-display .age-row {
+    font-size: 0.65rem;
+    color: rgba(255,255,255,0.25);
+    text-align: right;
+  }
+
+  .temp-display .no-data {
+    color: var(--md-sys-color-on-surface-variant);
+    font-style: italic;
+    font-size: 0.8rem;
+    text-align: center;
+    padding: 8px 0;
+  }
+
+  /* ── Offset input ── */
+  .offset-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    color: var(--md-sys-color-on-surface-variant);
+    background: rgba(0,0,0,0.1);
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--md-sys-color-outline);
+  }
+
+  .offset-row input[type=number] {
+    width: 68px;
+    background: var(--md-sys-color-surface-variant);
+    border: 1px solid var(--md-sys-color-outline);
+    color: #fff;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    font-family: monospace;
+    text-align: right;
+  }
+
+  .offset-row input[type=number]:focus {
+    outline: none;
+    border-color: var(--md-sys-color-primary);
+  }
+
+  /* ── Signal meter panel ── */
+  .signal-panel {
+    background: var(--md-sys-color-surface);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 16px;
+    padding: 16px;
+  }
+
+  .panel-title {
+    font-family: "Outfit", sans-serif;
+    font-size: 0.95rem;
+    color: var(--md-sys-color-on-surface-variant);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+  }
+
+  .ws-status-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    font-family: monospace;
+  }
+
+  .ws-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .ws-dot.connected    { background: #4ade80; box-shadow: 0 0 8px rgba(74, 222, 128, 0.6); }
+  .ws-dot.disconnected { background: #ea580c; box-shadow: 0 0 8px rgba(234, 88, 12, 0.6); }
+
+  .signal-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .signal-row {
+    display: grid;
+    grid-template-columns: 80px 100px 70px 1fr;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.8rem;
+    padding: 4px 0;
+  }
+
+  .signal-row-label {
+    color: var(--md-sys-color-on-surface);
+    font-weight: 500;
+  }
+
+  .signal-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 16px;
+  }
+
+  .bar {
+    width: 6px;
+    border-radius: 1px;
+    background: #333;
+    transition: background 0.3s;
+  }
+
+  .bar-1 { height: 4px; }
+  .bar-2 { height: 7px; }
+  .bar-3 { height: 10px; }
+  .bar-4 { height: 13px; }
+  .bar-5 { height: 16px; }
+
+  .signal-dbm {
+    font-weight: 700;
+    font-family: monospace;
+    text-align: right;
+  }
+
+  .signal-qual {
+    font-size: 0.72rem;
+    color: var(--md-sys-color-on-surface-variant);
+    text-transform: capitalize;
+  }
+
+  /* ── Sync panel ── */
   .sync-panel {
-    background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 8px;
-    padding: 8px 12px; flex: 1; min-width: 300px;
+    background: var(--md-sys-color-surface);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
-  .sync-rows { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+
+  .sync-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
   .sync-row {
-    display: flex; align-items: center; gap: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(0,0,0,0.12);
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--md-sys-color-outline);
   }
-  .sync-check { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: .75rem; }
-  .sync-check input[type=checkbox] { width: 14px; height: 14px; cursor: pointer; accent-color: #2d5af5; }
-  .sync-check input[type=checkbox]:disabled { cursor: not-allowed; }
-  .sync-unit-name { font-weight: 600; color: #ccc; }
+
+  .sync-check {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    user-select: none;
+  }
+
+  .sync-check input[type=checkbox] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--md-sys-color-primary);
+  }
+
+  .sync-check input[type=checkbox]:disabled {
+    cursor: not-allowed;
+  }
+
+  .sync-unit-name {
+    font-weight: 600;
+    color: #fff;
+  }
+
   .sync-sensor-tag {
-    font-size: .65rem; color: #5fdb8a; background: #0d2b1a;
-    border-radius: 4px; padding: 2px 6px; letter-spacing: .04em;
+    font-size: 0.65rem;
+    color: var(--md-sys-color-primary);
+    background: rgba(168, 199, 250, 0.08);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 4px;
+    padding: 1px 4px;
+    font-family: monospace;
   }
-  .sync-disp-temp { font-size: .85rem; font-weight: 600; color: #7ecfff; font-family: monospace; }
-  .sync-btn {
-    padding: 6px 12px; border: 1px solid #2d7a3e; border-radius: 6px;
-    background: #1d4e2a; color: #5fdb8a; font-weight: 600; font-size: .75rem;
-    cursor: pointer; transition: background .15s;
-  }
-  .sync-btn:hover:not(:disabled) { background: #25623a; }
-  .sync-btn:disabled { opacity: .4; cursor: default; }
-  .sync-hint { font-size: .68rem; color: #555; }
 
-  /* ── log ── */
-  .log-wrap {
-    width: 100%; background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 8px;
-    padding: 12px; height: calc(100vh - 180px); overflow: hidden; display: flex; flex-direction: column;
+  .sync-disp-temp {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--md-sys-color-primary);
+    font-family: monospace;
   }
-  .log-title { font-size: .7rem; color: #555; margin-bottom: 8px; letter-spacing: .08em; text-transform: uppercase; }
-  .log-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-  .log-entry { font-size: .72rem; color: #888; font-family: monospace; }
-  .log-entry .ts  { color: #555; }
-  .log-entry.ok  .msg { color: #5fdb8a; }
-  .log-entry.err .msg { color: #f07070; }
 
-  /* ── temperature graph ── */
+  .sync-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+  }
+
+  .sync-hint {
+    font-size: 0.72rem;
+    color: var(--md-sys-color-on-surface-variant);
+    line-height: 1.3;
+  }
+
+  /* ── Temperature graph panel ── */
   .temp-graph-panel {
-    width: 100%; background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 8px;
-    padding: 20px; height: calc(100vh - 180px); overflow: hidden; display: flex; flex-direction: column;
+    width: 100%;
+    background: var(--md-sys-color-surface);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 16px;
+    padding: 20px;
+    height: calc(100vh - 200px);
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
+
+  .temp-graph-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .temp-graph-title-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
   .temp-graph-title {
-    font-size: .7rem; color: #555; letter-spacing: .08em;
-    text-transform: uppercase; margin-bottom: 8px;
-    display: flex; align-items: center; justify-content: space-between;
+    font-family: "Outfit", sans-serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #fff;
   }
+
   .temp-graph-controls {
-    display: flex; gap: 6px; font-size: .72rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
+
   .temp-graph-btn {
-    padding: 4px 8px; border: 1px solid #333; border-radius: 5px;
-    background: #252525; color: #aaa; cursor: pointer;
-    transition: all .15s;
+    padding: 6px 12px;
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 14px;
+    background: var(--md-sys-color-surface-variant);
+    color: var(--md-sys-color-on-surface-variant);
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 600;
+    transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
   }
-  .temp-graph-btn:hover { background: #2d2d2d; border-color: #444; }
+
+  .temp-graph-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+  }
+
   .temp-graph-btn.active {
-    background: #2d5af5; color: #fff; border-color: #2d5af5;
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    border-color: var(--md-sys-color-primary);
   }
+
   .temp-graph-canvas {
-    flex: 1; width: 100%; position: relative;
+    flex: 1;
+    width: 100%;
+    position: relative;
   }
+
   .temp-graph-loading {
-    display: flex; align-items: center; justify-content: center;
-    height: 100%; color: #555; font-size: .85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: 0.9rem;
+    font-style: italic;
   }
 
   /* ── calibration panel ── */
   .cal-panel {
-    width: 100%; background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 8px;
-    padding: 20px; overflow-y: auto; max-height: calc(100vh - 180px);
+    width: 100%;
+    background: var(--md-sys-color-surface);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
   }
+
   .cal-section {
-    margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid #2c2c2c;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--md-sys-color-outline);
   }
-  .cal-section:last-child { border-bottom: none; margin-bottom: 0; }
+
+  .cal-section:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
   .cal-section-title {
-    font-size: .85rem; color: #aaa; letter-spacing: .06em;
-    margin-bottom: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px;
+    font-family: "Outfit", sans-serif;
+    font-size: 1.05rem;
+    color: #fff;
+    margin-bottom: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
+
+  .cal-description {
+    font-size: 0.8rem;
+    color: var(--md-sys-color-on-surface-variant);
+    line-height: 1.4;
+    margin-bottom: 14px;
+  }
+
   .cal-form {
-    display: grid; gap: 12px; max-width: 600px;
+    display: grid;
+    gap: 12px;
+    max-width: 700px;
   }
+
   .cal-form-row {
-    display: flex; gap: 10px; align-items: center;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
   }
+
   .cal-label {
-    min-width: 120px; font-size: .8rem; color: #888;
+    min-width: 140px;
+    font-size: 0.8rem;
+    color: var(--md-sys-color-on-surface-variant);
+    font-weight: 500;
   }
+
   .cal-input {
-    flex: 1; background: #252525; border: 1px solid #333; color: #e0e0e0;
-    border-radius: 6px; padding: 8px 12px; font-size: .85rem;
+    flex: 1;
+    min-width: 200px;
+    background: var(--md-sys-color-surface-variant);
+    border: 1px solid var(--md-sys-color-outline);
+    color: #fff;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    transition: border-color 0.2s;
   }
-  .cal-input:focus { outline: none; border-color: #2d5af5; }
-  .cal-input[type=datetime-local] { font-family: monospace; }
-  .cal-hint {
-    font-size: .7rem; color: #666; margin-top: 4px; font-style: italic;
+
+  .cal-input:focus {
+    outline: none;
+    border-color: var(--md-sys-color-primary);
   }
-  .cal-btn {
-    padding: 10px 18px; border: 1px solid #2d5af5; border-radius: 6px;
-    background: #2d5af5; color: #fff; font-weight: 600; font-size: .85rem;
-    cursor: pointer; transition: all .15s;
+
+  .cal-input[type=datetime-local] {
+    font-family: monospace;
   }
-  .cal-btn:hover:not(:disabled) { background: #4068ff; }
-  .cal-btn:disabled { opacity: .4; cursor: not-allowed; }
-  .cal-btn-secondary {
-    background: #252525; border-color: #444; color: #aaa;
-  }
-  .cal-btn-secondary:hover:not(:disabled) { background: #2d2d2d; }
-  .cal-btn-danger {
-    background: #8b0000; border-color: #8b0000; color: #fff;
-  }
-  .cal-btn-danger:hover:not(:disabled) { background: #a00000; }
-  
+
   .cal-sessions {
-    display: flex; flex-direction: column; gap: 10px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
   }
+
   .cal-session-card {
-    background: #252525; border: 1px solid #333; border-radius: 6px;
-    padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;
+    background: rgba(0,0,0,0.12);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
   }
+
   .cal-session-info {
-    display: flex; flex-direction: column; gap: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
   }
+
   .cal-session-name {
-    font-size: .9rem; font-weight: 600; color: #e0e0e0;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #fff;
   }
+
   .cal-session-meta {
-    font-size: .72rem; color: #888; font-family: monospace;
+    font-size: 0.7rem;
+    color: var(--md-sys-color-on-surface-variant);
+    font-family: monospace;
   }
+
   .cal-session-ref {
-    font-size: .75rem; color: #7ecfff; margin-top: 2px;
+    font-size: 0.72rem;
+    color: var(--md-sys-color-primary);
+    font-weight: 500;
   }
-  .cal-session-actions {
-    display: flex; gap: 6px;
-  }
-  
+
   .cal-coeffs {
-    display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   }
+
   .cal-coeff-card {
-    background: #252525; border: 1px solid #333; border-radius: 6px;
-    padding: 14px; display: flex; flex-direction: column; gap: 6px;
+    background: rgba(0,0,0,0.12);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
+
   .cal-coeff-title {
-    font-size: .9rem; font-weight: 600; color: #e0e0e0; margin-bottom: 4px;
+    font-family: "Outfit", sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #fff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--md-sys-color-outline);
+    padding-bottom: 6px;
   }
+
   .cal-coeff-row {
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: .75rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
   }
-  .cal-coeff-label { color: #888; }
-  .cal-coeff-value { color: #7ecfff; font-family: monospace; }
-  .cal-coeff-rmse { color: #5fdb8a; }
-  
+
+  .cal-coeff-label {
+    color: var(--md-sys-color-on-surface-variant);
+  }
+
+  .cal-coeff-value {
+    color: var(--md-sys-color-primary);
+    font-family: monospace;
+    font-weight: 600;
+  }
+
+  .cal-coeff-rmse {
+    color: #5fdb8a;
+    font-weight: 600;
+  }
+
   .cal-preview {
-    background: #252525; border: 1px solid #333; border-radius: 6px;
-    padding: 12px; margin-top: 10px; display: grid; gap: 8px;
+    background: rgba(0,0,0,0.15);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 12px;
+    padding: 12px;
+    margin-top: 10px;
+    display: grid;
     grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
   }
+
   .cal-preview-unit {
-    display: flex; flex-direction: column; gap: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: center;
   }
+
   .cal-preview-label {
-    font-size: .7rem; color: #888; text-transform: uppercase;
+    font-size: 0.68rem;
+    color: var(--md-sys-color-on-surface-variant);
+    text-transform: uppercase;
+    font-weight: 600;
   }
+
   .cal-preview-value {
-    font-size: 1rem; font-weight: 600; color: #7ecfff; font-family: monospace;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--md-sys-color-primary);
+    font-family: monospace;
   }
+
   .cal-preview-range {
-    font-size: .65rem; color: #666;
+    font-size: 0.65rem;
+    color: rgba(255,255,255,0.25);
   }
-  
-  .cal-empty {
-    color: #666; font-size: .8rem; font-style: italic; padding: 20px; text-align: center;
+
+  /* ── log ── */
+  .log-wrap {
+    width: 100%;
+    background: var(--md-sys-color-surface);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 16px;
+    padding: 16px;
+    height: calc(100vh - 200px);
+    display: flex;
+    flex-direction: column;
   }
+
+  .log-title {
+    font-family: "Outfit", sans-serif;
+    font-size: 1.05rem;
+    color: #fff;
+    margin-bottom: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .log-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: rgba(0,0,0,0.2);
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.3);
+  }
+
+  .log-entry {
+    font-size: 0.75rem;
+    font-family: monospace;
+    padding: 2px 0;
+    display: flex;
+    gap: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+  }
+
+  .log-entry .ts {
+    color: rgba(255,255,255,0.25);
+    flex-shrink: 0;
+  }
+
+  .log-entry .unit-name {
+    color: var(--md-sys-color-primary);
+    font-weight: 600;
+    flex-shrink: 0;
+    min-width: 60px;
+  }
+
+  .log-entry.ok  .msg { color: #5fdb8a; }
+  .log-entry.err .msg { color: #ffb4ab; }
 </style>
 </head>
 <body>
-<h1>ESP32 Mesh Dashboard <span style="font-size:.7em;color:#666;font-weight:400;">· 3 units</span></h1>
 <div id="root"></div>
 
 <script type="text/babel">
@@ -530,9 +1147,13 @@ function useRssiWS(dispatch) {
           if (msg.type === 'rssi') {
             dispatch({ type: 'RSSI', data: msg.data });
           } else if (msg.type === 'temperature') {
-            // New temperature reading logged - refresh history
-            // We'll trigger a fetch in the component that listens for this
-            console.log('[ws] New temperature reading logged', msg.data);
+            console.log('[ws] Temperature update pushed:', msg.data);
+            if (msg.data && msg.data.readings) {
+              const readings = msg.data.readings;
+              if (readings.a) dispatch({ type: 'TEMP_A', data: { ok: readings.a.ok, temp_c: readings.a.tempC, humidity: readings.a.humidity, age: 0 } });
+              if (readings.b) dispatch({ type: 'TEMP_B', data: { ok: readings.b.ok, temp_c: readings.b.tempC, humidity: readings.b.humidity, age: 0 } });
+              if (readings.c) dispatch({ type: 'TEMP_C', data: { ok: readings.c.ok, temp_c: readings.c.tempC, humidity: readings.c.humidity, age: 0 } });
+            }
           }
         } catch (_) {}
       };
@@ -555,7 +1176,7 @@ function SignalMeter({ label, rssi }) {
       <div className="signal-bars">
         {[1, 2, 3, 4, 5].map(i => (
           <div key={i} className={'bar bar-' + i}
-               style={{ background: i <= filled ? col : '#2e2e2e' }} />
+               style={{ background: i <= filled ? col : '#222' }} />
         ))}
       </div>
       <span className="signal-dbm" style={{ color: col }}>
@@ -574,11 +1195,11 @@ function SignalPanel({ rssi, wsConnected }) {
   return (
     <div className="signal-panel">
       <div className="panel-title">
-        <span className={'ws-dot ' + (wsConnected ? 'connected' : 'disconnected')} />
-        Signal Strength
-        <span style={{ color: '#444', fontWeight: 400 }}>
-          {wsConnected ? '— live' : '— reconnecting…'}
-        </span>
+        <span>Signal Quality</span>
+        <div className="ws-status-group">
+          <span className={'ws-dot ' + (wsConnected ? 'connected' : 'disconnected')} />
+          <span>{wsConnected ? 'Live Connection' : 'Disconnected'}</span>
+        </div>
       </div>
       <div className="signal-rows">
         <SignalMeter label="A ↔ WiFi" rssi={wifiRssi} />
@@ -593,95 +1214,73 @@ function SignalPanel({ rssi, wsConnected }) {
 function TempBadge({ data, offset = 0, unitId, calibratedTempC }) {
   if (!data) {
     return (
-      <div className="temp-badge">
-        <span className="no-data">Waiting for temperature…</span>
+      <div className="temp-display">
+        <span className="no-data">Waiting for temperature...</span>
       </div>
     );
   }
   if (data.temp_c <= -99) {
     return (
-      <div className="temp-badge">
-        <span className="no-data" style={{color:'#ea580c'}}>⚠ Sensor error — unit online, sensor not responding</span>
+      <div className="temp-display">
+        <span className="no-data" style={{color:'var(--md-sys-color-error)'}}>
+          <span className="material-symbols-outlined" style={{verticalAlign:'middle', marginRight:'4px'}}>warning</span>
+          Sensor error - unit online
+        </span>
       </div>
     );
   }
   
-  const rawF = (data.temp_c * 9 / 5 + 32).toFixed(1);
   const displayF = ((data.temp_c * 9 / 5 + 32) + offset).toFixed(1);
-  const age = data.age < 60 ? data.age + ' s ago' : Math.floor(data.age / 60) + ' min ago';
+  const age = data.age < 60 ? data.age + 's ago' : Math.floor(data.age / 60) + 'm ago';
   
   // If calibration is available, show calibrated value
   const hasCal = calibratedTempC !== null && calibratedTempC !== undefined && calibratedTempC !== data.temp_c;
   const calF = hasCal ? (calibratedTempC * 9 / 5 + 32).toFixed(1) : null;
   
   return (
-    <div className="temp-badge">
-      <div>
-        <div className="lbl">Temp</div>
-        <div className="val">{displayF} °F</div>
-        {hasCal && (
-          <div style={{ fontSize: '.7rem', color: '#5fdb8a', marginTop: '2px' }}>
-            📐 Cal: {calF} °F
+    <div className="temp-display">
+      <div className="temp-row">
+        <div className="label-group">
+          <span className="material-symbols-outlined" style={{fontSize:'16px'}}>device_thermostat</span>
+          <span>Temp</span>
+        </div>
+        <div className="val">{displayF}°F</div>
+      </div>
+      
+      {data.humidity !== null && (
+        <div className="temp-row">
+          <div className="label-group">
+            <span className="material-symbols-outlined" style={{fontSize:'16px'}}>humidity_mid</span>
+            <span>Humidity</span>
           </div>
-        )}
-      </div>
-      <div className="hum">
-        <div className="lbl">Humidity</div>
-        <div className="val">{data.humidity} %</div>
-      </div>
-      <div><div className="age-txt">{age}</div></div>
+          <div className="val humidity-val">{data.humidity}%</div>
+        </div>
+      )}
+      
+      {hasCal && (
+        <div className="calibrated-row">
+          <div className="label-group" style={{color:'#5fdb8a'}}>
+            <span className="material-symbols-outlined" style={{fontSize:'14px'}}>grid_on</span>
+            <span>Calibrated</span>
+          </div>
+          <div className="calibrated-val">{calF}°F</div>
+        </div>
+      )}
+      <div className="age-row">Updated {age}</div>
     </div>
   );
 }
 
 // ── TempOffset ────────────────────────────────────────────────────────────────
+// UI Component for slider/input of calibration offset
 function TempOffset({ value, onChange }) {
   return (
     <div className="offset-row">
-      <span>Calibration offset:</span>
-      <input type="number" step="0.1" value={value}
-             onChange={e => onChange(parseFloat(e.target.value) || 0)} />
-      <span>°F</span>
-    </div>
-  );
-}
-
-// ── SyncPanel ───────────────────────────────────────────────────────────────────
-const UNIT_SENSORS = { a: 'DHT22', b: 'SHT30', c: 'DHT11' };
-
-function SyncPanel({ tempA, tempB, tempC, offsets, includes, onToggle, onSync }) {
-  const units = [
-    { key: 'a', label: 'Unit A', sensor: UNIT_SENSORS.a, data: tempA },
-    { key: 'b', label: 'Unit B', sensor: UNIT_SENSORS.b, data: tempB },
-    { key: 'c', label: 'Unit C', sensor: UNIT_SENSORS.c, data: tempC },
-  ];
-  const hasEnough = units.filter(u => includes[u.key] && u.data).length >= 2;
-  return (
-    <div className="sync-panel">
-      <div className="panel-title">Temperature Calibration Sync</div>
-      <div className="sync-rows">
-        {units.map(u => {
-          const rawF = u.data ? (u.data.temp_c * 9/5 + 32) : null;
-          const displayed = rawF !== null ? (rawF + (offsets[u.key] || 0)).toFixed(1) + ' °F' : '—';
-          return (
-            <div key={u.key} className="sync-row">
-              <label className="sync-check">
-                <input type="checkbox" checked={includes[u.key]}
-                       onChange={() => onToggle(u.key)}
-                       disabled={!u.data} />
-                <span className="sync-unit-name">{u.label}</span>
-                <span className="sync-sensor-tag">{u.sensor}</span>
-              </label>
-              <span className="sync-disp-temp">{displayed}</span>
-            </div>
-          );
-        })}
-      </div>
-      <button className="sync-btn" disabled={!hasEnough} onClick={onSync}>
-        Sync to Average
-      </button>
-      <div className="sync-hint">
-        Adjusts offsets so all included units display the same temperature.
+      <span>Local offset:</span>
+      <div style={{display:'flex', alignItems:'center', gap:'6px'}}>
+        <input type="number" step="0.1" value={value}
+               onChange={e => onChange(parseFloat(e.target.value) || 0)} />
+        <span>°F</span>
       </div>
     </div>
   );
@@ -700,7 +1299,6 @@ function ColorPicker({ hex, onChange, disabled }) {
   }
   return (
     <div className="picker-row" style={disabled ? { opacity: .4, pointerEvents: 'none' } : {}}>
-      {/* color input always reflects parent state immediately; text input uses local state for smooth typing */}
       <input type="color" value={hex} onChange={onPicker} />
       <input type="text" className="hex-input" value={local} onChange={onText} maxLength={7} />
     </div>
@@ -711,24 +1309,33 @@ function ColorPicker({ hex, onChange, disabled }) {
 function ActivityLog({ entries }) {
   return (
     <div className="log-wrap">
-      <div className="log-title">Activity Log</div>
+      <div className="log-title">
+        <span className="material-symbols-outlined">receipt_long</span>
+        Activity Log
+      </div>
       <div className="log-list">
-        {entries.map((e, i) => (
-          <div key={i} className={'log-entry ' + (e.ok ? 'ok' : 'err')}>
-            <span className="ts">[{e.ts}] </span>
-            <span className="msg">{e.unit}: {e.msg}</span>
-          </div>
-        ))}
+        {entries.length === 0 ? (
+          <div style={{color:'var(--md-sys-color-on-surface-variant)', fontSize:'0.8rem', fontStyle:'italic', textAlign:'center', padding:'20px'}}>No logs yet</div>
+        ) : (
+          entries.map((e, i) => (
+            <div key={i} className={'log-entry ' + (e.ok ? 'ok' : 'err')}>
+              <span className="ts">[{e.ts}]</span>
+              <span className="unit-name">{e.unit}</span>
+              <span className="msg">{e.msg}</span>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
 }
 
 // ── TemperatureGraph ──────────────────────────────────────────────────────────
-function TemperatureGraph({ history }) {
+function TemperatureGraph() {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
   const [timeRange, setTimeRange] = useState(6); // hours
+  const [showCalibrated, setShowCalibrated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [readings, setReadings] = useState([]);
@@ -739,10 +1346,10 @@ function TemperatureGraph({ history }) {
       setLoading(true);
       setError(null);
       try {
-        console.log('[graph] Fetching temperature history for', timeRange, 'hours');
-        const response = await fetch(`/api/temperature/history?hours=${timeRange}&limit=1000`);
+        console.log('[graph] Fetching calibrated temperature history for', timeRange, 'hours');
+        // Always fetch from calibrated endpoint which contains both raw and calibrated values
+        const response = await fetch(`/api/temperature/history/calibrated?hours=${timeRange}&limit=1000`);
         const data = await response.json();
-        console.log('[graph] Received data:', data.ok, 'count:', data.count);
         if (data.ok && data.readings) {
           setReadings(data.readings);
         } else {
@@ -759,46 +1366,37 @@ function TemperatureGraph({ history }) {
     }
     fetchHistory();
 
-    // Refresh every minute
     const interval = setInterval(fetchHistory, 60000);
     return () => clearInterval(interval);
   }, [timeRange]);
 
-  // Update chart when readings or canvas ref changes
+  // Update chart when readings, showCalibrated, or canvas ref changes
   useEffect(() => {
     if (!loading && readings.length > 0 && canvasRef.current) {
-      console.log('[graph] Canvas ready, creating chart with', readings.length, 'readings');
       updateChart(readings);
     }
-  }, [readings, loading]);
+  }, [readings, showCalibrated, loading]);
 
   function updateChart(readings) {
-    if (!canvasRef.current) {
-      console.log('[graph] Canvas ref not ready');
-      return;
-    }
+    if (!canvasRef.current) return;
     
     if (!readings || readings.length === 0) {
-      console.log('[graph] No readings to display');
       setError('No temperature data recorded yet');
       return;
     }
 
-    console.log('[graph] Updating chart with', readings.length, 'readings');
-
-    // Group readings by timestamp
     const byTimestamp = {};
     readings.forEach(r => {
       if (!byTimestamp[r.timestamp]) {
         byTimestamp[r.timestamp] = { timestamp: r.timestamp, a: null, b: null, c: null };
       }
-      byTimestamp[r.timestamp][r.unit_id] = r.temp_c;
+      // Toggle value based on showCalibrated flag
+      const tempVal = showCalibrated && r.temp_c_calibrated !== null ? r.temp_c_calibrated : r.temp_c;
+      byTimestamp[r.timestamp][r.unit_id] = tempVal;
     });
 
     const points = Object.values(byTimestamp).sort((x, y) => x.timestamp - y.timestamp);
-    console.log('[graph] Grouped into', points.length, 'time points');
 
-    // Convert to chart format
     const labels = points.map(p => {
       const d = new Date(p.timestamp * 1000);
       return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -808,37 +1406,26 @@ function TemperatureGraph({ history }) {
     const dataB = points.map(p => p.b !== null ? (p.b * 9/5 + 32) : null);
     const dataC = points.map(p => p.c !== null ? (p.c * 9/5 + 32) : null);
 
-    // Calculate dynamic Y-axis range: default 60-100, expand ±5 if needed, round to nearest 5
     const allTemps = [...dataA, ...dataB, ...dataC].filter(t => t !== null);
     let yMin = 60;
     let yMax = 100;
     if (allTemps.length > 0) {
       const minTemp = Math.min(...allTemps);
       const maxTemp = Math.max(...allTemps);
-      // If data goes below 60, expand down by 5 and round to nearest 5
-      if (minTemp < 60) {
-        yMin = Math.floor((minTemp - 5) / 5) * 5;
-      }
-      // If data goes above 100, expand up by 5 and round to nearest 5
-      if (maxTemp > 100) {
-        yMax = Math.ceil((maxTemp + 5) / 5) * 5;
-      }
+      if (minTemp < 60) yMin = Math.floor((minTemp - 4) / 5) * 5;
+      if (maxTemp > 100) yMax = Math.ceil((maxTemp + 4) / 5) * 5;
     }
 
-    // Destroy old chart if exists
     if (chartRef.current) {
       chartRef.current.destroy();
       chartRef.current = null;
     }
 
-    // Check if Chart.js is loaded
     if (typeof Chart === 'undefined') {
-      console.error('[graph] Chart.js not loaded!');
       setError('Chart library not loaded');
       return;
     }
 
-    // Create new chart
     try {
       const ctx = canvasRef.current.getContext('2d');
       chartRef.current = new Chart(ctx, {
@@ -850,33 +1437,33 @@ function TemperatureGraph({ history }) {
               label: 'Unit A (DHT22)',
               data: dataA,
               borderColor: '#7ecfff',
-              backgroundColor: 'rgba(126, 207, 255, 0.1)',
+              backgroundColor: 'rgba(126, 207, 255, 0.05)',
               borderWidth: 2,
-              pointRadius: 3,
+              pointRadius: 2,
               pointHoverRadius: 5,
-              tension: 0.3,
+              tension: 0.2,
               spanGaps: true,
             },
             {
               label: 'Unit B (SHT30)',
               data: dataB,
               borderColor: '#5fdb8a',
-              backgroundColor: 'rgba(95, 219, 138, 0.1)',
+              backgroundColor: 'rgba(95, 219, 138, 0.05)',
               borderWidth: 2,
-              pointRadius: 3,
+              pointRadius: 2,
               pointHoverRadius: 5,
-              tension: 0.3,
+              tension: 0.2,
               spanGaps: true,
             },
             {
               label: 'Unit C (DHT11)',
               data: dataC,
               borderColor: '#facc15',
-              backgroundColor: 'rgba(250, 204, 21, 0.1)',
+              backgroundColor: 'rgba(250, 204, 21, 0.05)',
               borderWidth: 2,
-              pointRadius: 3,
+              pointRadius: 2,
               pointHoverRadius: 5,
-              tension: 0.3,
+              tension: 0.2,
               spanGaps: true,
             },
           ],
@@ -892,17 +1479,19 @@ function TemperatureGraph({ history }) {
             legend: {
               position: 'top',
               labels: {
-                color: '#aaa',
-                font: { size: 12 },
+                color: '#8e8e93',
+                font: { family: 'Outfit', size: 12 },
                 usePointStyle: true,
                 padding: 15,
               },
             },
             tooltip: {
-              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+              backgroundColor: '#1c1c1e',
               titleColor: '#fff',
-              bodyColor: '#ccc',
-              borderColor: '#444',
+              titleFont: { family: 'Outfit' },
+              bodyColor: '#e3e2e6',
+              bodyFont: { family: 'Inter' },
+              borderColor: '#2c2c35',
               borderWidth: 1,
               padding: 10,
               displayColors: true,
@@ -911,7 +1500,7 @@ function TemperatureGraph({ history }) {
                   let label = context.dataset.label || '';
                   if (label) label += ': ';
                   if (context.parsed.y !== null) {
-                    label += context.parsed.y.toFixed(1) + ' °F';
+                    label += context.parsed.y.toFixed(1) + '°F';
                   } else {
                     label += 'No data';
                   }
@@ -922,14 +1511,8 @@ function TemperatureGraph({ history }) {
           },
           scales: {
             x: {
-              grid: {
-                color: '#2a2a2a',
-              },
-              ticks: {
-                color: '#888',
-                maxRotation: 45,
-                minRotation: 0,
-              },
+              grid: { color: '#1e1e24' },
+              ticks: { color: '#8e8e93', font: { size: 10 } },
             },
             y: {
               min: yMin,
@@ -937,23 +1520,19 @@ function TemperatureGraph({ history }) {
               title: {
                 display: true,
                 text: 'Temperature (°F)',
-                color: '#aaa',
+                color: '#8e8e93',
+                font: { family: 'Outfit', size: 11 }
               },
-              grid: {
-                color: '#2a2a2a',
-              },
+              grid: { color: '#1e1e24' },
               ticks: {
-                color: '#888',
+                color: '#8e8e93',
                 stepSize: 5,
-                callback: function(value) {
-                  return value.toFixed(0) + '°';
-                }
+                callback: function(value) { return value.toFixed(0) + '°'; }
               },
             },
           },
         },
       });
-      console.log('[graph] Chart created successfully');
       setError(null);
     } catch (err) {
       console.error('[graph] Error creating chart:', err);
@@ -963,41 +1542,38 @@ function TemperatureGraph({ history }) {
 
   return (
     <div className="temp-graph-panel">
-      <div className="temp-graph-title">
-        <span>Temperature History</span>
-        <div className="temp-graph-controls">
-          <button
-            className={'temp-graph-btn' + (timeRange === 1 ? ' active' : '')}
-            onClick={() => setTimeRange(1)}
-          >
-            1h
-          </button>
-          <button
-            className={'temp-graph-btn' + (timeRange === 6 ? ' active' : '')}
-            onClick={() => setTimeRange(6)}
-          >
-            6h
-          </button>
-          <button
-            className={'temp-graph-btn' + (timeRange === 24 ? ' active' : '')}
-            onClick={() => setTimeRange(24)}
-          >
-            24h
-          </button>
-          <button
-            className={'temp-graph-btn' + (timeRange === 168 ? ' active' : '')}
-            onClick={() => setTimeRange(168)}
-          >
-            7d
-          </button>
+      <div className="temp-graph-header">
+        <div className="temp-graph-title-group">
+          <span className="material-symbols-outlined" style={{color: 'var(--md-sys-color-primary)'}}>insights</span>
+          <span className="temp-graph-title">Temperature Trends</span>
+        </div>
+        <div style={{display:'flex', alignItems:'center', gap:'12px'}}>
+          <label style={{display:'flex', alignItems:'center', gap:'6px', fontSize:'0.75rem', color:'var(--md-sys-color-on-surface-variant)', cursor:'pointer'}}>
+            <input 
+              type="checkbox" 
+              checked={showCalibrated} 
+              onChange={(e) => setShowCalibrated(e.target.checked)}
+              style={{accentColor: 'var(--md-sys-color-primary)'}}
+            />
+            Show Calibrated Curves
+          </label>
+          <div className="temp-graph-controls">
+            {[1, 6, 24, 168].map(h => (
+              <button
+                key={h}
+                className={'temp-graph-btn' + (timeRange === h ? ' active' : '')}
+                onClick={() => setTimeRange(h)}
+              >
+                {h === 168 ? '7d' : h + 'h'}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       {loading ? (
-        <div className="temp-graph-loading">Loading temperature history...</div>
+        <div className="temp-graph-loading">Retrieving temperature records...</div>
       ) : error ? (
-        <div className="temp-graph-loading" style={{color: '#ea580c'}}>
-          {error}
-        </div>
+        <div className="temp-graph-loading" style={{color: 'var(--md-sys-color-error)'}}>{error}</div>
       ) : (
         <div className="temp-graph-canvas">
           <canvas ref={canvasRef}></canvas>
@@ -1031,14 +1607,13 @@ function CalibrationPanel() {
   const [capturing, setCapturing] = useState(false);
   const [lastCapture, setLastCapture] = useState(null);
 
-  // ── Bootstrap (fit polynomial from all historical paired readings) ──
-  const [bootstrapInfo, setBootstrapInfo] = useState(null);   // { numPaired, truthRangeF }
+  // ── Bootstrap (fit polynomial from history) ──
+  const [bootstrapInfo, setBootstrapInfo] = useState(null);
   const [bootstrapping, setBootstrapping] = useState(false);
   const [bootstrapDegree, setBootstrapDegree] = useState(2);
   const [bootstrapStartTime, setBootstrapStartTime] = useState('');
   const [bootstrapEndTime, setBootstrapEndTime] = useState('');
   
-  // Fetch sessions and coefficients on mount
   useEffect(() => {
     fetchSessions();
     fetchCoefficients();
@@ -1073,12 +1648,9 @@ function CalibrationPanel() {
     setMessage({ type: 'info', text: 'Fitting polynomial from history…' });
     try {
       const body = { degree: bootstrapDegree };
-      if (bootstrapStartTime) {
-        body.startTime = Math.floor(new Date(bootstrapStartTime).getTime() / 1000);
-      }
-      if (bootstrapEndTime) {
-        body.endTime = Math.floor(new Date(bootstrapEndTime).getTime() / 1000);
-      }
+      if (bootstrapStartTime) body.startTime = Math.floor(new Date(bootstrapStartTime).getTime() / 1000);
+      if (bootstrapEndTime) body.endTime = Math.floor(new Date(bootstrapEndTime).getTime() / 1000);
+      
       const res = await fetch('/api/calibration/bootstrap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1215,15 +1787,12 @@ function CalibrationPanel() {
       setMessage({ type: 'error', text: 'Please select start and end times' });
       return;
     }
-    
     const start = Math.floor(new Date(startTime).getTime() / 1000);
     const end = Math.floor(new Date(endTime).getTime() / 1000);
-    
     if (end <= start) {
       setMessage({ type: 'error', text: 'End time must be after start time' });
       return;
     }
-    
     try {
       const res = await fetch(`/api/calibration/preview?startTime=${start}&endTime=${end}`);
       const data = await res.json();
@@ -1240,20 +1809,16 @@ function CalibrationPanel() {
   
   async function handleCreateSession(e) {
     e.preventDefault();
-    
     if (!startTime || !endTime) {
       setMessage({ type: 'error', text: 'Please select start and end times' });
       return;
     }
-    
     const start = Math.floor(new Date(startTime).getTime() / 1000);
     const end = Math.floor(new Date(endTime).getTime() / 1000);
-    
     if (end <= start) {
       setMessage({ type: 'error', text: 'End time must be after start time' });
       return;
     }
-    
     setLoading(true);
     try {
       const res = await fetch('/api/calibration/sessions', {
@@ -1267,18 +1832,14 @@ function CalibrationPanel() {
           notes: notes || null,
         }),
       });
-      
       const data = await res.json();
       if (data.ok) {
         setMessage({ type: 'success', text: 'Calibration session created!' });
-        // Reset form
         setSessionName('');
         setReferenceTemp('');
         setStartTime('');
         setEndTime('');
-        setNotes('');
         setPreview(null);
-        // Refresh sessions list
         fetchSessions();
       } else {
         setMessage({ type: 'error', text: data.message });
@@ -1292,7 +1853,6 @@ function CalibrationPanel() {
   
   async function handleDeleteSession(sessionId) {
     if (!confirm('Delete this calibration session?')) return;
-    
     try {
       const res = await fetch(`/api/calibration/sessions/${sessionId}`, { method: 'DELETE' });
       const data = await res.json();
@@ -1312,17 +1872,14 @@ function CalibrationPanel() {
       setMessage({ type: 'error', text: 'No calibration sessions found. Create sessions first.' });
       return;
     }
-    
     setLoading(true);
     setMessage({ type: 'info', text: 'Computing calibration coefficients...' });
-    
     try {
       const res = await fetch('/api/calibration/compute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ degree: computeDegree }),
       });
-      
       const data = await res.json();
       if (data.ok) {
         setMessage({ type: 'success', text: 'Calibration computed successfully!' });
@@ -1339,7 +1896,6 @@ function CalibrationPanel() {
   
   async function handleDeleteCoefficients(unitId) {
     if (!confirm(`Delete calibration for Unit ${unitId.toUpperCase()}?`)) return;
-    
     try {
       const res = await fetch(`/api/calibration/coefficients/${unitId}`, { method: 'DELETE' });
       const data = await res.json();
@@ -1370,66 +1926,70 @@ function CalibrationPanel() {
   
   return (
     <div className="cal-panel">
-      
-      {/* Message banner */}
       {message && (
         <div style={{
-          padding: '12px',
-          marginBottom: '16px',
-          borderRadius: '6px',
-          background: message.type === 'error' ? '#2a1a1a' : message.type === 'success' ? '#1a2a1a' : '#1a1a2a',
-          color: message.type === 'error' ? '#f87171' : message.type === 'success' ? '#4ade80' : '#7ecfff',
-          border: `1px solid ${message.type === 'error' ? '#8b0000' : message.type === 'success' ? '#2d7a3e' : '#2d5af5'}`,
-          fontSize: '.85rem',
+          padding: '12px 16px',
+          borderRadius: '8px',
+          background: message.type === 'error' ? 'var(--md-sys-color-error-container)' : message.type === 'success' ? 'rgba(74, 222, 128, 0.08)' : 'rgba(168, 199, 250, 0.08)',
+          color: message.type === 'error' ? 'var(--md-sys-color-error)' : message.type === 'success' ? '#4ade80' : 'var(--md-sys-color-primary)',
+          border: `1px solid ${message.type === 'error' ? 'var(--md-sys-color-error)' : message.type === 'success' ? '#2d7a3e' : 'var(--md-sys-color-primary)'}`,
+          fontSize: '0.82rem',
+          fontWeight: '500',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
         }}>
+          <span className="material-symbols-outlined" style={{fontSize: '18px'}}>
+            {message.type === 'error' ? 'report' : message.type === 'success' ? 'check_circle' : 'info'}
+          </span>
           {message.text}
         </div>
       )}
       
-      {/* Section 0: Auto-Sync Calibration Mode (NEW) */}
+      {/* Auto-Sync Calibration Mode */}
       <div className="cal-section" style={{
-        border: autoMode.enabled ? '2px solid #2d5af5' : '1px solid #2a2a2a',
-        borderRadius: '8px',
-        padding: '14px',
-        background: autoMode.enabled ? 'rgba(45,90,245,0.06)' : 'transparent',
+        border: autoMode.enabled ? '1px solid var(--md-sys-color-primary)' : '1px solid var(--md-sys-color-outline)',
+        borderRadius: '12px',
+        padding: '16px',
+        background: autoMode.enabled ? 'rgba(168, 199, 250, 0.02)' : 'transparent',
       }}>
         <div className="cal-section-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          🤖 Auto-Sync Calibration Mode
+          <span className="material-symbols-outlined" style={{color: 'var(--md-sys-color-primary)'}}>automation</span>
+          <span>Auto-Sync Calibration</span>
           <span style={{
-            fontSize: '.7rem',
+            fontSize: '0.68rem',
             padding: '2px 8px',
             borderRadius: '10px',
-            background: autoMode.enabled ? '#2d5af5' : '#333',
-            color: '#fff',
+            background: autoMode.enabled ? 'var(--md-sys-color-primary-container)' : 'var(--md-sys-color-surface-variant)',
+            color: autoMode.enabled ? 'var(--md-sys-color-on-primary-container)' : 'var(--md-sys-color-on-surface-variant)',
+            fontWeight: '600',
+            marginLeft: 'auto'
           }}>
             {autoMode.enabled ? 'ON' : 'OFF'}
           </span>
         </div>
 
-        <p style={{ fontSize: '.8rem', color: '#888', marginBottom: '12px', lineHeight: 1.5 }}>
-          Place all 3 sensors together so they read the same true temperature.
-          Enable the mode, then click <strong>Capture Point Now</strong> after each stabilisation.
-          Move the cluster to a new temperature (cold room, warm room, hot box, fridge…),
-          wait 10–15&nbsp;min, capture again. The server will refit the equation across the whole range automatically.
+        <p className="cal-description">
+          Colocate all 3 sensors together so they experience the exact same environment.
+          Enable Auto-Sync Mode, stabilization for 10-15 minutes, then trigger <strong>Capture Point Now</strong>. 
+          Repeat at different temperatures (fridge, indoor, outdoor, warm area) to auto-fit a correction curve.
         </p>
 
-        {/* Toggle + settings row */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '14px' }}>
           <button
-            className={'cal-btn' + (autoMode.enabled ? ' cal-btn-danger' : '')}
+            className={'m-btn ' + (autoMode.enabled ? 'm-btn-danger' : 'm-btn-primary')}
             onClick={() => toggleAutoMode(!autoMode.enabled)}
-            style={{ flex: 'none' }}
           >
-            {autoMode.enabled ? 'Disable Mode' : 'Enable Auto-Sync Mode'}
+            {autoMode.enabled ? 'Disable Mode' : 'Enable Mode'}
           </button>
 
-          <label style={{ fontSize: '.8rem', color: '#bbb', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            Degree:
+          <label style={{ fontSize: '0.8rem', color: 'var(--md-sys-color-on-surface-variant)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>Degree:</span>
             <select
               className="cal-input"
               value={autoMode.degree}
               onChange={(e) => updateAutoModeSetting({ degree: parseInt(e.target.value) })}
-              style={{ flex: 'none', width: '120px' }}
+              style={{ flex: 'none', width: '110px', padding: '6px 10px' }}
             >
               <option value={1}>1 (Linear)</option>
               <option value={2}>2 (Quadratic)</option>
@@ -1437,39 +1997,37 @@ function CalibrationPanel() {
             </select>
           </label>
 
-          <label style={{ fontSize: '.8rem', color: '#bbb', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <label style={{ fontSize: '0.8rem', color: 'var(--md-sys-color-on-surface-variant)', display: 'flex', alignItems: 'center', gap: '6px', cursor:'pointer' }}>
             <input
               type="checkbox"
               checked={autoMode.autoRecompute}
               onChange={(e) => updateAutoModeSetting({ autoRecompute: e.target.checked })}
+              style={{accentColor: 'var(--md-sys-color-primary)'}}
             />
-            Auto-recompute equation after each capture
+            <span>Auto-compute curve</span>
           </label>
         </div>
 
-        {/* Coverage summary */}
         <div style={{
-          padding: '10px 12px',
-          background: '#181818',
-          borderRadius: '6px',
-          fontSize: '.78rem',
-          color: '#bbb',
+          padding: '10px 14px',
+          background: 'rgba(0,0,0,0.15)',
+          borderRadius: '8px',
+          fontSize: '0.78rem',
+          color: 'var(--md-sys-color-on-surface-variant)',
           marginBottom: '14px',
+          border: '1px solid var(--md-sys-color-outline)'
         }}>
-          <strong style={{ color: '#fff' }}>Coverage:</strong>{' '}
+          <strong>Calibration Coverage:</strong>{' '}
           {coverage.numPoints === 0 ? (
-            <span style={{ color: '#facc15' }}>No calibration points yet. Capture at least 2 (linear) or 5 (quadratic) across your range.</span>
+            <span style={{ color: 'var(--md-sys-color-primary)' }}>No captured sessions yet. Collect data points at different temperatures.</span>
           ) : (
             <>
               {coverage.numPoints} point(s)
               {coverage.minF !== null && coverage.maxF !== null && (
-                <> spanning <strong style={{ color: '#7ecfff' }}>{coverage.minF.toFixed(1)}°F → {coverage.maxF.toFixed(1)}°F</strong> ({(coverage.maxF - coverage.minF).toFixed(1)}°F range)</>
+                <> spanning <strong style={{ color: '#fff' }}>{coverage.minF.toFixed(1)}°F → {coverage.maxF.toFixed(1)}°F</strong> ({(coverage.maxF - coverage.minF).toFixed(1)}°F span)</>
               )}
               {coverage.numPoints < (autoMode.degree + 1) && (
-                <span style={{ color: '#facc15' }}> — need {autoMode.degree + 1 - coverage.numPoints} more for degree {autoMode.degree}.</span>
-              )}
-              {coverage.numPoints >= (autoMode.degree + 1) && coverage.rangeC !== null && coverage.rangeC < 10 && (
-                <span style={{ color: '#facc15' }}> — try adding points farther apart (current spread is small).</span>
+                <span style={{ color: 'var(--md-sys-color-error)' }}> — need {autoMode.degree + 1 - coverage.numPoints} more points.</span>
               )}
             </>
           )}
@@ -1477,132 +2035,94 @@ function CalibrationPanel() {
 
         {/* Bootstrap from existing history */}
         <div style={{
-          padding: '12px',
-          background: '#1a1f0e',
-          border: '1px solid #6b7f1e',
-          borderRadius: '6px',
+          padding: '14px',
+          background: 'rgba(255,255,255,0.01)',
+          border: '1px dashed var(--md-sys-color-outline)',
+          borderRadius: '10px',
           marginBottom: '14px',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-            <strong style={{ color: '#e8ed9e', fontSize: '.85rem' }}>📚 Bootstrap from History</strong>
-            <span style={{ fontSize: '.75rem', color: '#bbb' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+            <strong style={{ color: 'var(--md-sys-color-primary)', fontSize: '0.85rem' }}>📚 Fit from History (Bootstrap)</strong>
+            <span style={{ fontSize: '0.75rem', color: 'var(--md-sys-color-on-surface-variant)' }}>
               {bootstrapInfo
                 ? (bootstrapInfo.numPaired > 0 && bootstrapInfo.truthRangeF
-                  ? `${bootstrapInfo.numPaired} paired readings, range ${bootstrapInfo.truthRangeF.min.toFixed(1)}–${bootstrapInfo.truthRangeF.max.toFixed(1)}°F (${bootstrapInfo.truthRangeF.spread.toFixed(1)}°F spread)`
-                  : bootstrapInfo.numPaired > 0
-                  ? `${bootstrapInfo.numPaired} paired readings (range data unavailable)`
-                  : 'no paired readings in selected time range')
-                : 'loading…'}
+                  ? `${bootstrapInfo.numPaired} triplets, range ${bootstrapInfo.truthRangeF.min.toFixed(1)}–{bootstrapInfo.truthRangeF.max.toFixed(1)}°F`
+                  : 'No paired readings found in DB')
+                : 'Inspecting DB...'}
             </span>
           </div>
-          <p style={{ fontSize: '.75rem', color: '#999', margin: '0 0 12px 0' }}>
-            Select a time range when all 3 sensors were colocated. Leave blank to use all data.
+          <p style={{ fontSize: '0.75rem', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: '12px' }}>
+            Select a period where all 3 monitors were placed together. Leave blank to fit using all database history.
           </p>
           
-          {/* Time range selection */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', marginBottom: '12px' }}>
             <div>
-              <label style={{ fontSize: '.75rem', color: '#bbb', display: 'block', marginBottom: '4px' }}>Start Time (leave blank for all before end)</label>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <label style={{ fontSize: '0.72rem', color: 'var(--md-sys-color-on-surface-variant)', display: 'block', marginBottom: '4px' }}>Start Period</label>
+              <div style={{ display: 'flex', gap: '6px' }}>
                 <input
                   type="datetime-local"
                   className="cal-input"
                   value={bootstrapStartTime}
                   onChange={(e) => setBootstrapStartTime(e.target.value)}
                   disabled={bootstrapping}
-                  style={{ flex: '1' }}
                 />
-                <button
-                  className="cal-btn cal-btn-secondary"
-                  onClick={() => setBootstrapStartTime('')}
-                  disabled={bootstrapping || !bootstrapStartTime}
-                  style={{ padding: '6px 10px', fontSize: '.7rem' }}
-                  title="Clear start time"
-                >
-                  Clear
-                </button>
+                <button className="m-btn m-btn-secondary" onClick={() => setBootstrapStartTime('')} disabled={bootstrapping || !bootstrapStartTime} style={{padding:'4px 8px'}}>X</button>
               </div>
             </div>
             <div>
-              <label style={{ fontSize: '.75rem', color: '#bbb', display: 'block', marginBottom: '4px' }}>End Time (leave blank for all after start)</label>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <label style={{ fontSize: '0.72rem', color: 'var(--md-sys-color-on-surface-variant)', display: 'block', marginBottom: '4px' }}>End Period</label>
+              <div style={{ display: 'flex', gap: '6px' }}>
                 <input
                   type="datetime-local"
                   className="cal-input"
                   value={bootstrapEndTime}
                   onChange={(e) => setBootstrapEndTime(e.target.value)}
                   disabled={bootstrapping}
-                  style={{ flex: '1' }}
                 />
-                <button
-                  className="cal-btn cal-btn-secondary"
-                  onClick={() => setBootstrapEndTime('')}
-                  disabled={bootstrapping || !bootstrapEndTime}
-                  style={{ padding: '6px 10px', fontSize: '.7rem' }}
-                  title="Clear end time"
-                >
-                  Clear
-                </button>
+                <button className="m-btn m-btn-secondary" onClick={() => setBootstrapEndTime('')} disabled={bootstrapping || !bootstrapEndTime} style={{padding:'4px 8px'}}>X</button>
               </div>
             </div>
           </div>
           
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
-            <label style={{ fontSize: '.8rem', color: '#bbb', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              Degree:
+            <label style={{ fontSize: '0.8rem', color: 'var(--md-sys-color-on-surface-variant)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>Degree:</span>
               <select
                 className="cal-input"
                 value={bootstrapDegree}
                 onChange={(e) => setBootstrapDegree(parseInt(e.target.value))}
-                style={{ flex: 'none', width: '120px' }}
+                style={{ flex: 'none', width: '90px', padding: '6px' }}
                 disabled={bootstrapping}
               >
-                <option value={1}>1 (Linear)</option>
-                <option value={2}>2 (Quadratic)</option>
-                <option value={3}>3 (Cubic)</option>
+                <option value={1}>1 (Lin)</option>
+                <option value={2}>2 (Quad)</option>
+                <option value={3}>3 (Cub)</option>
               </select>
             </label>
-            <button
-              className="cal-btn"
-              onClick={fetchBootstrapInfo}
-              disabled={bootstrapping}
-              style={{ flex: 'none' }}
-            >
-              📊 Preview Data
-            </button>
-            <button
-              className="cal-btn"
-              onClick={handleBootstrap}
-              disabled={bootstrapping || !bootstrapInfo || bootstrapInfo.numPaired === 0}
-              style={{ flex: 'none', background: '#2d5af5', border: '1px solid #4a7bff' }}
-            >
-              {bootstrapping ? '⏳ Fitting…' : '✅ Fit & Save Equation'}
+            <button className="m-btn m-btn-secondary" onClick={fetchBootstrapInfo} disabled={bootstrapping}>Preview DB</button>
+            <button className="m-btn m-btn-primary" onClick={handleBootstrap} disabled={bootstrapping || !bootstrapInfo || bootstrapInfo.numPaired === 0}>
+              {bootstrapping ? '⏳ Fitting...' : 'Fit & Apply Now'}
             </button>
           </div>
-          {bootstrapInfo && bootstrapInfo.truthRangeF && bootstrapInfo.truthRangeF.spread < 15 && (
-            <div style={{ fontSize: '.72rem', color: '#facc15', marginTop: '8px' }}>
-              ⚠️ Range is narrow ({bootstrapInfo.truthRangeF.spread.toFixed(1)}°F). The fit will be valid in this band only.
-              For full-range accuracy (e.g. 50°F & 105°F), enable Auto-Sync Mode below and capture points at extreme temperatures.
-            </div>
-          )}
         </div>
 
-        {/* Capture form (only when enabled) */}
         {autoMode.enabled && (
           <div style={{
             padding: '14px',
-            background: '#0e1422',
-            borderRadius: '6px',
-            border: '1px solid #2d5af5',
+            background: 'rgba(0,0,0,0.2)',
+            borderRadius: '10px',
+            border: '1px solid var(--md-sys-color-outline)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
           }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
               <input
                 type="text"
                 className="cal-input"
-                placeholder="Optional label (auto-generated if blank)"
+                placeholder="Optional label (e.g. Ice bucket)"
                 value={captureLabel}
                 onChange={(e) => setCaptureLabel(e.target.value)}
-                style={{ flex: '2 1 220px' }}
                 disabled={capturing}
               />
               <input
@@ -1612,51 +2132,44 @@ function CalibrationPanel() {
                 placeholder="Ref temp (°C, optional)"
                 value={captureRef}
                 onChange={(e) => setCaptureRef(e.target.value)}
-                style={{ flex: '1 1 160px' }}
                 disabled={capturing}
               />
               <button
-                className="cal-btn"
+                className="m-btn m-btn-primary"
                 onClick={handleCapturePoint}
                 disabled={capturing}
-                style={{ flex: 'none', padding: '10px 18px', fontSize: '.9rem' }}
               >
-                {capturing ? '⏳ Capturing…' : '📸 Capture Point Now'}
+                {capturing ? 'Sampling...' : 'Capture Point Now'}
               </button>
             </div>
-            <div className="cal-hint" style={{ marginTop: '10px' }}>
-              ℹ️ Reference temp is optional. Leave blank to use the mean of all 3 sensors as truth (correct when sensors are colocated).
-              Each capture takes ~5&nbsp;s: server triggers an ESP sync, then collects 3 fresh samples.
+            <div style={{ fontSize: '0.72rem', color: 'var(--md-sys-color-on-surface-variant)' }}>
+              Each capture triggers an ESP32 sync and averages 3 sequential readings spaced 1.5s apart.
             </div>
 
             {lastCapture && (
               <div style={{
-                marginTop: '12px',
-                padding: '10px',
-                background: '#1a2a1a',
-                borderRadius: '4px',
-                fontSize: '.78rem',
-                color: '#9fe9b0',
+                padding: '8px 12px',
+                background: 'rgba(74,222,128,0.06)',
+                borderRadius: '8px',
+                fontSize: '0.76rem',
+                color: '#8be2a0',
+                border: '1px solid rgba(74,222,128,0.15)'
               }}>
-                ✓ Last capture: <strong>{lastCapture.label}</strong>
-                {' — '}
-                A={lastCapture.means.a !== null ? (lastCapture.means.a * 9 / 5 + 32).toFixed(1) + '°F' : '—'},{' '}
-                B={lastCapture.means.b !== null ? (lastCapture.means.b * 9 / 5 + 32).toFixed(1) + '°F' : '—'},{' '}
-                C={lastCapture.means.c !== null ? (lastCapture.means.c * 9 / 5 + 32).toFixed(1) + '°F' : '—'}
+                ✓ Captured <strong>{lastCapture.label}</strong>: A={(lastCapture.means.a*9/5+32).toFixed(1)}°F | B={(lastCapture.means.b*9/5+32).toFixed(1)}°F | C={(lastCapture.means.c*9/5+32).toFixed(1)}°F (mean={(lastCapture.groupMean*9/5+32).toFixed(1)}°F)
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Section 1: Create Calibration Session */}
+      {/* Create Calibration Session manually */}
       <div className="cal-section">
         <div className="cal-section-title">
-          📊 Create Calibration Session
+          <span className="material-symbols-outlined" style={{color: 'var(--md-sys-color-primary)'}}>edit_calendar</span>
+          <span>Create Calibration Session</span>
         </div>
-        <p style={{ fontSize: '.8rem', color: '#888', marginBottom: '16px' }}>
-          Select a time range when all sensors were in the same stable environment. 
-          Optionally enter a reference temperature from an independent thermometer.
+        <p className="cal-description">
+          Manually input a historical window where all units were in thermal equilibrium.
         </p>
         
         <form className="cal-form" onSubmit={handleCreateSession}>
@@ -1665,14 +2178,14 @@ function CalibrationPanel() {
             <input 
               type="text" 
               className="cal-input" 
-              placeholder="e.g., Indoor baseline"
+              placeholder="e.g. Ice water test"
               value={sessionName}
               onChange={(e) => setSessionName(e.target.value)}
             />
           </div>
           
           <div className="cal-form-row">
-            <label className="cal-label">Start Time</label>
+            <label className="cal-label">Time Window</label>
             <input 
               type="datetime-local" 
               className="cal-input"
@@ -1680,26 +2193,7 @@ function CalibrationPanel() {
               onChange={(e) => setStartTime(e.target.value)}
               required
             />
-            <button 
-              type="button" 
-              className="cal-btn cal-btn-secondary" 
-              onClick={setTimeRangeToday}
-              style={{ flex: 'none' }}
-            >
-              Today
-            </button>
-            <button 
-              type="button" 
-              className="cal-btn cal-btn-secondary" 
-              onClick={setTimeRangeLast24h}
-              style={{ flex: 'none' }}
-            >
-              Last 24h
-            </button>
-          </div>
-          
-          <div className="cal-form-row">
-            <label className="cal-label">End Time</label>
+            <span style={{color:'var(--md-sys-color-on-surface-variant)'}}>to</span>
             <input 
               type="datetime-local" 
               className="cal-input"
@@ -1709,20 +2203,22 @@ function CalibrationPanel() {
             />
           </div>
           
+          <div className="cal-form-row" style={{justifyContent:'flex-start', gap:'12px'}}>
+            <span className="cal-label">Quick Range:</span>
+            <button type="button" className="m-btn m-btn-secondary" onClick={setTimeRangeToday}>Today</button>
+            <button type="button" className="m-btn m-btn-secondary" onClick={setTimeRangeLast24h}>Last 24 Hours</button>
+          </div>
+          
           <div className="cal-form-row">
-            <label className="cal-label">Reference Temp (°C)</label>
+            <label className="cal-label">Reference Temperature</label>
             <input 
               type="number" 
               step="0.1"
               className="cal-input" 
-              placeholder="Leave empty to use sensor mean"
+              placeholder="°C (leave blank to use average of all units)"
               value={referenceTemp}
               onChange={(e) => setReferenceTemp(e.target.value)}
             />
-          </div>
-          <div className="cal-hint">
-            ℹ️ If you have an independent thermometer reading, enter it here. 
-            Otherwise, the system will use the mean of all sensors as the reference.
           </div>
           
           <div className="cal-form-row">
@@ -1730,32 +2226,18 @@ function CalibrationPanel() {
             <input 
               type="text" 
               className="cal-input" 
-              placeholder="Optional notes about this calibration point"
+              placeholder="Ambient notes..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
           
-          <div className="cal-form-row" style={{ gap: '12px' }}>
-            <button 
-              type="button" 
-              className="cal-btn cal-btn-secondary" 
-              onClick={handlePreview}
-              disabled={loading}
-            >
-              Preview Data
-            </button>
-            <button 
-              type="submit" 
-              className="cal-btn"
-              disabled={loading}
-            >
-              Create Session
-            </button>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+            <button type="button" className="m-btn m-btn-secondary" onClick={handlePreview} disabled={loading}>Preview Data</button>
+            <button type="submit" className="m-btn m-btn-primary" disabled={loading}>Create Session</button>
           </div>
         </form>
         
-        {/* Preview panel */}
         {preview && (
           <div className="cal-preview">
             {['a', 'b', 'c'].map(unit => (
@@ -1764,14 +2246,14 @@ function CalibrationPanel() {
                 {preview[unit] && preview[unit].count > 0 ? (
                   <>
                     <div className="cal-preview-value">
-                      {preview[unit].mean.toFixed(2)}°C
+                      {(preview[unit].mean*9/5+32).toFixed(1)}°F
                     </div>
                     <div className="cal-preview-range">
-                      {preview[unit].min.toFixed(1)} – {preview[unit].max.toFixed(1)}°C ({preview[unit].count} readings)
+                      {(preview[unit].min*9/5+32).toFixed(1)}–{(preview[unit].max*9/5+32).toFixed(1)}°F ({preview[unit].count} pts)
                     </div>
                   </>
                 ) : (
-                  <div className="cal-preview-value" style={{ color: '#666' }}>No data</div>
+                  <div className="cal-preview-value" style={{ color: 'rgba(255,255,255,0.15)' }}>No readings</div>
                 )}
               </div>
             ))}
@@ -1779,99 +2261,75 @@ function CalibrationPanel() {
         )}
       </div>
       
-      {/* Section 2: Existing Sessions */}
+      {/* Existing Sessions */}
       <div className="cal-section">
         <div className="cal-section-title">
-          📋 Calibration Sessions ({sessions.length})
+          <span className="material-symbols-outlined" style={{color: 'var(--md-sys-color-primary)'}}>list_alt</span>
+          <span>Calibration Sessions ({sessions.length})</span>
         </div>
         
         {sessions.length === 0 ? (
-          <div className="cal-empty">
-            No calibration sessions yet. Create one above to get started.
-          </div>
+          <div style={{color:'var(--md-sys-color-on-surface-variant)', fontSize:'0.8rem', fontStyle:'italic', padding:'10px 0'}}>No sessions. Add a session to enable custom fitting.</div>
         ) : (
           <div className="cal-sessions">
             {sessions.map(session => (
               <div key={session.id} className="cal-session-card">
                 <div className="cal-session-info">
-                  <div className="cal-session-name">
-                    {session.name || 'Unnamed Session'}
-                  </div>
+                  <div className="cal-session-name">{session.name || 'Untitled session'}</div>
                   <div className="cal-session-meta">
-                    {new Date(session.start_time * 1000).toLocaleString()} → {new Date(session.end_time * 1000).toLocaleString()}
+                    {new Date(session.start_time * 1000).toLocaleString()} – {new Date(session.end_time * 1000).toLocaleTimeString()}
                   </div>
                   {session.reference_temp && (
-                    <div className="cal-session-ref">
-                      Reference: {session.reference_temp.toFixed(2)}°C
-                    </div>
+                    <div className="cal-session-ref">Reference: {(session.reference_temp*9/5+32).toFixed(2)}°F</div>
                   )}
-                  {session.notes && (
-                    <div style={{ fontSize: '.7rem', color: '#999', marginTop: '4px' }}>
-                      {session.notes}
-                    </div>
-                  )}
+                  {session.notes && <div style={{ fontSize: '0.72rem', color: 'var(--md-sys-color-on-surface-variant)' }}>{session.notes}</div>}
                 </div>
-                <div className="cal-session-actions">
-                  <button 
-                    className="cal-btn cal-btn-danger"
-                    style={{ padding: '6px 12px', fontSize: '.75rem' }}
-                    onClick={() => handleDeleteSession(session.id)}
-                  >
-                    Delete
-                  </button>
-                </div>
+                <button className="m-btn m-btn-danger" style={{padding:'6px 12px', borderRadius:'8px'}} onClick={() => handleDeleteSession(session.id)}>Delete</button>
               </div>
             ))}
           </div>
         )}
       </div>
       
-      {/* Section 3: Compute Calibration */}
+      {/* Compute Calibration Coefficients */}
       <div className="cal-section">
         <div className="cal-section-title">
-          🧮 Compute Calibration Coefficients
+          <span className="material-symbols-outlined" style={{color: 'var(--md-sys-color-primary)'}}>calculate</span>
+          <span>Fit Polynomial Coefficients</span>
         </div>
-        <p style={{ fontSize: '.8rem', color: '#888', marginBottom: '16px' }}>
-          After creating 5+ calibration sessions at different stable temperatures, 
-          compute the polynomial correction coefficients.
+        <p className="cal-description">
+          Fit a custom correction curve using the saved sessions. degree 2 (quadratic) requires 3+ points and is highly recommended.
         </p>
         
-        <div className="cal-form-row" style={{ maxWidth: '600px', gap: '12px' }}>
-          <label className="cal-label">Polynomial Degree</label>
-          <select 
-            className="cal-input" 
-            value={computeDegree}
-            onChange={(e) => setComputeDegree(parseInt(e.target.value))}
-            style={{ flex: 'none', width: '100px' }}
-          >
-            <option value={1}>1 (Linear)</option>
-            <option value={2}>2 (Quadratic)</option>
-            <option value={3}>3 (Cubic)</option>
-          </select>
-          <button 
-            className="cal-btn"
-            onClick={handleComputeCalibration}
-            disabled={loading || sessions.length === 0}
-          >
-            Compute Now
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ fontSize: '0.8rem', color: 'var(--md-sys-color-on-surface-variant)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>Polynomial Degree:</span>
+            <select 
+              className="cal-input" 
+              value={computeDegree}
+              onChange={(e) => setComputeDegree(parseInt(e.target.value))}
+              style={{ flex: 'none', width: '100px', padding: '6px' }}
+            >
+              <option value={1}>1 (Linear)</option>
+              <option value={2}>2 (Quadratic)</option>
+              <option value={3}>3 (Cubic)</option>
+            </select>
+          </label>
+          <button className="m-btn m-btn-primary" onClick={handleComputeCalibration} disabled={loading || sessions.length === 0}>
+            Compute Curves
           </button>
-        </div>
-        
-        <div className="cal-hint" style={{ marginTop: '12px' }}>
-          ℹ️ Recommended: Use degree 2 (quadratic) with 5+ calibration points spread across your temperature range.
         </div>
       </div>
       
-      {/* Section 4: Current Calibration Coefficients */}
+      {/* Active Coefficients */}
       <div className="cal-section">
         <div className="cal-section-title">
-          ✅ Active Calibration Coefficients
+          <span className="material-symbols-outlined" style={{color: '#5fdb8a'}}>fact_check</span>
+          <span>Active Calibration Coefficients</span>
         </div>
         
         {Object.keys(coefficients).length === 0 ? (
-          <div className="cal-empty">
-            No calibration coefficients computed yet. Create sessions and compute calibration above.
-          </div>
+          <div style={{color:'var(--md-sys-color-on-surface-variant)', fontSize:'0.8rem', fontStyle:'italic', padding:'10px 0'}}>No active coefficients. Compute coefficients above to apply them.</div>
         ) : (
           <div className="cal-coeffs">
             {['a', 'b', 'c'].map(unitId => {
@@ -1881,22 +2339,8 @@ function CalibrationPanel() {
               return (
                 <div key={unitId} className="cal-coeff-card">
                   <div className="cal-coeff-title">
-                    Unit {unitId.toUpperCase()}
-                    <button 
-                      style={{ 
-                        float: 'right', 
-                        padding: '4px 8px', 
-                        fontSize: '.7rem',
-                        background: '#8b0000',
-                        border: 'none',
-                        borderRadius: '4px',
-                        color: '#fff',
-                        cursor: 'pointer',
-                      }}
-                      onClick={() => handleDeleteCoefficients(unitId)}
-                    >
-                      Delete
-                    </button>
+                    <span>Unit {unitId.toUpperCase()}</span>
+                    <button className="m-btn m-btn-danger" style={{padding:'4px 8px', borderRadius:'6px', fontSize:'0.7rem'}} onClick={() => handleDeleteCoefficients(unitId)}>Clear</button>
                   </div>
                   
                   <div className="cal-coeff-row">
@@ -1905,41 +2349,37 @@ function CalibrationPanel() {
                   </div>
                   
                   <div className="cal-coeff-row">
-                    <span className="cal-coeff-label">c0 (constant):</span>
-                    <span className="cal-coeff-value">{coeff.c0 != null ? coeff.c0.toFixed(6) : '—'}</span>
+                    <span className="cal-coeff-label">c0 (offset):</span>
+                    <span className="cal-coeff-value">{coeff.c0.toFixed(5)}</span>
                   </div>
                   
                   <div className="cal-coeff-row">
-                    <span className="cal-coeff-label">c1 (linear):</span>
-                    <span className="cal-coeff-value">{coeff.c1 != null ? coeff.c1.toFixed(6) : '—'}</span>
+                    <span className="cal-coeff-label">c1 (slope):</span>
+                    <span className="cal-coeff-value">{coeff.c1.toFixed(5)}</span>
                   </div>
                   
                   {coeff.degree >= 2 && (
                     <div className="cal-coeff-row">
                       <span className="cal-coeff-label">c2 (quadratic):</span>
-                      <span className="cal-coeff-value">{coeff.c2 != null ? coeff.c2.toFixed(6) : '—'}</span>
+                      <span className="cal-coeff-value">{coeff.c2.toFixed(6)}</span>
                     </div>
                   )}
                   
                   {coeff.degree >= 3 && (
                     <div className="cal-coeff-row">
                       <span className="cal-coeff-label">c3 (cubic):</span>
-                      <span className="cal-coeff-value">{coeff.c3 != null ? coeff.c3.toFixed(6) : '—'}</span>
+                      <span className="cal-coeff-value">{coeff.c3.toFixed(6)}</span>
                     </div>
                   )}
                   
                   <div className="cal-coeff-row">
-                    <span className="cal-coeff-label">RMSE:</span>
-                    <span className="cal-coeff-rmse">{coeff.rmse != null ? coeff.rmse.toFixed(3) + '°C' : '—'}</span>
+                    <span className="cal-coeff-label">Fitting RMSE:</span>
+                    <span className="cal-coeff-rmse">{coeff.rmse.toFixed(3)}°C</span>
                   </div>
                   
                   <div className="cal-coeff-row">
-                    <span className="cal-coeff-label">Data Points:</span>
+                    <span className="cal-coeff-label font-size-0.65">Data Points:</span>
                     <span className="cal-coeff-value">{coeff.num_points}</span>
-                  </div>
-                  
-                  <div style={{ fontSize: '.65rem', color: '#666', marginTop: '6px' }}>
-                    Updated: {new Date(coeff.computed_at).toLocaleString()}
                   </div>
                 </div>
               );
@@ -1947,7 +2387,6 @@ function CalibrationPanel() {
           </div>
         )}
       </div>
-      
     </div>
   );
 }
@@ -1958,7 +2397,6 @@ function App() {
   const [activeTab, setActiveTab] = useState('controls');
   const [colorExpanded, setColorExpanded] = useState({ a: false, b: false, c: false });
 
-  // per-unit send state — kept outside reducer for simplicity
   const [statusA, setStatusA] = useState(null);
   const [statusB, setStatusB] = useState(null);
   const [statusC, setStatusC] = useState(null);
@@ -1966,7 +2404,7 @@ function App() {
   const [busyB, setBusyB]     = useState(false);
   const [busyC, setBusyC]     = useState(false);
 
-  // Per-unit calibration offsets in °F — persisted to localStorage
+  // Per-unit local calibration offsets in °F — persisted to localStorage
   const loadOffsets = () => {
     try { return JSON.parse(localStorage.getItem('tempOffsets') || 'null') || { a: 0, b: 0, c: 0 }; }
     catch { return { a: 0, b: 0, c: 0 }; }
@@ -1990,6 +2428,7 @@ function App() {
     catch { return { a: true, b: true, c: true }; }
   };
   const [syncIncludes, setSyncIncludes] = useState(loadSyncIncludes);
+  
   function toggleSyncInclude(unit) {
     setSyncIncludes(prev => {
       const next = { ...prev, [unit]: !prev[unit] };
@@ -2015,10 +2454,10 @@ function App() {
     });
   }
 
-  // Live RSSI via WebSocket
+  // Live RSSI and temperatures via WebSocket
   useRssiWS(dispatch);
 
-  // MAC info
+  // MAC and port information
   useEffect(() => {
     fetch('/api/info')
       .then(r => r.json())
@@ -2026,21 +2465,20 @@ function App() {
       .catch(() => {});
   }, []);
 
-  // Fetch calibration coefficients on mount and when tab changes to calibration
+  // Fetch calibration coefficients
   useEffect(() => {
     fetch('/api/calibration/coefficients')
       .then(r => r.json())
       .then(d => { if (d.ok) setCalibCoeffs(d.coefficients); })
       .catch(() => {});
-  }, [activeTab]); // Refresh when switching tabs
+  }, [activeTab]);
 
   // Helper function to apply polynomial calibration
   const applyCalibratedTemp = (unitId, rawTempC) => {
     if (rawTempC === null || rawTempC === undefined) return null;
     const coeff = calibCoeffs[unitId];
-    if (!coeff) return rawTempC; // No calibration available
+    if (!coeff) return rawTempC;
     
-    // T_corrected = c0 + c1*T + c2*T^2 + c3*T^3
     const { c0, c1, c2, c3, degree } = coeff;
     let corrected = c0 + c1 * rawTempC;
     if (degree >= 2) corrected += c2 * rawTempC * rawTempC;
@@ -2049,7 +2487,7 @@ function App() {
     return corrected;
   };
 
-  // Unit A health check — checks connectivity to Unit A (ESP32 sender)
+  // Unit A health check
   useEffect(() => {
     let consecutiveFailures = 0;
     async function checkUnitA() {
@@ -2060,43 +2498,60 @@ function App() {
           dispatch({ type: 'UNIT_A_REACHABLE', reachable: true });
         } else {
           consecutiveFailures++;
-          if (consecutiveFailures >= 2) {
-            dispatch({ type: 'UNIT_A_REACHABLE', reachable: false });
-          }
+          if (consecutiveFailures >= 2) dispatch({ type: 'UNIT_A_REACHABLE', reachable: false });
         }
       } catch (error) {
         consecutiveFailures++;
-        if (consecutiveFailures >= 2) {
-          dispatch({ type: 'UNIT_A_REACHABLE', reachable: false });
-        }
+        if (consecutiveFailures >= 2) dispatch({ type: 'UNIT_A_REACHABLE', reachable: false });
       }
     }
-    checkUnitA(); // immediate check
-    const id = setInterval(checkUnitA, 4000);
+    checkUnitA();
+    const id = setInterval(checkUnitA, 5000);
     return () => clearInterval(id);
   }, []);
 
-  // Temperature polling
+  // Polling latest temperatures from Express cache (avoid hammering ESP32)
   useEffect(() => {
-    async function poll() {
+    async function pollLatestTemps() {
       try {
-        const [ra, rb, rc] = await Promise.all([
-          fetch('/api/temp_a').then(r => r.json()),
-          fetch('/api/temp_b').then(r => r.json()),
-          fetch('/api/temp_c').then(r => r.json()),
-        ]);
-        if (ra.ok) dispatch({ type: 'TEMP_A', data: ra });
-        if (rb.ok) dispatch({ type: 'TEMP_B', data: rb });
-        if (rc.ok) dispatch({ type: 'TEMP_C', data: rc });
+        const res = await fetch('/api/temperature/latest').then(r => r.json());
+        if (res.ok && res.readings) {
+          const now = Math.floor(Date.now() / 1000);
+          if (res.readings.a) {
+            dispatch({ type: 'TEMP_A', data: { 
+              ok: res.readings.a.temp_c !== null, 
+              temp_c: res.readings.a.temp_c, 
+              humidity: res.readings.a.humidity, 
+              age: now - res.readings.a.timestamp 
+            }});
+          }
+          if (res.readings.b) {
+            dispatch({ type: 'TEMP_B', data: { 
+              ok: res.readings.b.temp_c !== null, 
+              temp_c: res.readings.b.temp_c, 
+              humidity: res.readings.b.humidity, 
+              age: now - res.readings.b.timestamp 
+            }});
+          }
+          if (res.readings.c) {
+            dispatch({ type: 'TEMP_C', data: { 
+              ok: res.readings.c.temp_c !== null, 
+              temp_c: res.readings.c.temp_c, 
+              humidity: res.readings.c.humidity, 
+              age: now - res.readings.c.timestamp 
+            }});
+          }
+        }
       } catch (_) {}
     }
-    poll();
-    const id = setInterval(poll, 12000);
+    pollLatestTemps();
+    const id = setInterval(pollLatestTemps, 15000);
     return () => clearInterval(id);
   }, []);
 
-  // REST fallback RSSI poll — shows signal data even when WebSocket hasn't connected yet
+  // REST fallback RSSI poll — ONLY when WS is disconnected
   useEffect(() => {
+    if (state.wsConnected) return;
     async function fetchRssi() {
       try {
         const data = await fetch('/api/rssi').then(r => r.json());
@@ -2104,9 +2559,9 @@ function App() {
       } catch (_) {}
     }
     fetchRssi();
-    const id = setInterval(fetchRssi, 1000);
+    const id = setInterval(fetchRssi, 5000);
     return () => clearInterval(id);
-  }, [dispatch]);
+  }, [state.wsConnected, dispatch]);
 
   // Send color to a unit
   async function sendColor(unit, r, g, b, setBusy, setStatus) {
@@ -2141,7 +2596,6 @@ function App() {
   }
 
   function handleColorA(hex) {
-    // Single atomic dispatch so all swatches and pickers update in the same render
     const updates = { a: hex };
     if (state.modeB === 'match') updates.b = hex;
     if (state.modeC === 'match') updates.c = hex;
@@ -2150,7 +2604,6 @@ function App() {
 
   const { rssi, colors, modeB, modeC, tempA, tempB, tempC, log, info, wsConnected, unitAReachable } = state;
 
-  // Helper to check if sync is possible
   const canSync = () => {
     const rawFs = {
       a: tempA ? (tempA.temp_c * 9/5 + 32) : null,
@@ -2161,60 +2614,87 @@ function App() {
     return included.length >= 2;
   };
 
-  // Helper to render signal row
   const renderSignalRow = (label, val) => {
     if (val === null || val === undefined) {
       return (
         <div className="signal-row" key={label}>
           <span className="signal-row-label">{label}</span>
-          <span className="signal-dbm">—</span>
-          <span className="signal-qual">no data</span>
+          <div className="signal-bars">
+            {[1,2,3,4,5].map(i => <div key={i} className={'bar bar-'+i} style={{background:'#222'}} />)}
+          </div>
+          <span className="signal-dbm" style={{color:'#555'}}>—</span>
+          <span className="signal-qual" style={{color:'#555'}}>no data</span>
         </div>
       );
     }
-    // Extract rssi value if val is an object
     const dbm = (typeof val === 'object' && val.rssi !== undefined) ? val.rssi : val;
     let quality = 'excellent', color = '#4ade80';
     if (dbm >= -50) { quality = 'excellent'; color = '#4ade80'; }
     else if (dbm >= -60) { quality = 'good'; color = '#5fdb8a'; }
     else if (dbm >= -70) { quality = 'fair'; color = '#facc15'; }
     else { quality = 'weak'; color = '#ea580c'; }
+    
+    const filled = rssiToBars(dbm);
+    
     return (
       <div className="signal-row" key={label}>
         <span className="signal-row-label">{label}</span>
+        <div className="signal-bars">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className={'bar bar-' + i}
+                 style={{ background: i <= filled ? color : '#222' }} />
+          ))}
+        </div>
         <span className="signal-dbm" style={{ color }}>{dbm} dBm</span>
-        <span className="signal-qual">{quality}</span>
+        <span className="signal-qual" style={{ color }}>{quality}</span>
       </div>
     );
   };
 
   return (
     <>
+      <header>
+        <div className="header-title-group">
+          <h1>
+            <span className="material-symbols-outlined" style={{fontSize: '28px', color: 'var(--md-sys-color-primary)'}}>mesh</span>
+            ESP32 Mesh Temperature System
+          </h1>
+          <div className="header-subtitle">
+            <span className="material-symbols-outlined" style={{fontSize:'14px'}}>sensors</span>
+            <span>3 colocated monitors reading synchronously</span>
+          </div>
+        </div>
+      </header>
+
       {/* ── TABS ── */}
       <div className="tabs">
         <button 
           className={'tab-btn' + (activeTab === 'controls' ? ' active' : '')}
           onClick={() => setActiveTab('controls')}
         >
-          Controls
+          <span className="material-symbols-outlined" style={{fontSize: '18px'}}>dashboard</span>
+          Dashboard
         </button>
         <button 
           className={'tab-btn' + (activeTab === 'graph' ? ' active' : '')}
           onClick={() => setActiveTab('graph')}
         >
-          Temperature History
+          <span className="material-symbols-outlined" style={{fontSize: '18px'}}>monitoring</span>
+          History Graph
         </button>
         <button 
           className={'tab-btn' + (activeTab === 'calibration' ? ' active' : '')}
           onClick={() => setActiveTab('calibration')}
         >
-          Calibration
+          <span className="material-symbols-outlined" style={{fontSize: '18px'}}>settings_accessibility</span>
+          Calibration Curve
         </button>
         <button 
           className={'tab-btn' + (activeTab === 'log' ? ' active' : '')}
           onClick={() => setActiveTab('log')}
         >
-          Activity Log
+          <span className="material-symbols-outlined" style={{fontSize: '18px'}}>receipt_long</span>
+          Logs
         </button>
       </div>
 
@@ -2224,10 +2704,12 @@ function App() {
         {/* ── CONTROLS TAB ── */}
         <div className={'tab-panel' + (activeTab === 'controls' ? ' active' : '')}>
           
-          {/* Status row with calibration and signal */}
           <div className="status-row">
             <div className="sync-panel">
-              <div className="panel-title">Calibration Sync</div>
+              <div className="panel-title">
+                <span>Synchronized Offsets</span>
+                <span className="sync-sensor-tag" style={{fontSize:'0.65rem'}}>Fahrenheit</span>
+              </div>
               <div className="sync-rows">
                 <div className="sync-row">
                   <label className="sync-check">
@@ -2237,8 +2719,8 @@ function App() {
                       disabled={!tempA}
                       onChange={() => toggleSyncInclude('a')}
                     />
-                    <span className="sync-unit-name">A</span>
-                    <span className="sync-sensor-tag">{UNIT_SENSORS.a}</span>
+                    <span className="sync-unit-name">Unit A</span>
+                    <span className="sync-sensor-tag">{info.unitA ? info.unitA.sensor : 'DHT22'}</span>
                   </label>
                   <span className="sync-disp-temp">
                     {tempA ? ((tempA.temp_c * 9/5 + 32) + (offsets.a || 0)).toFixed(1) + ' °F' : '—'}
@@ -2252,8 +2734,8 @@ function App() {
                       disabled={!tempB}
                       onChange={() => toggleSyncInclude('b')}
                     />
-                    <span className="sync-unit-name">B</span>
-                    <span className="sync-sensor-tag">{UNIT_SENSORS.b}</span>
+                    <span className="sync-unit-name">Unit B</span>
+                    <span className="sync-sensor-tag">{info.unitB ? info.unitB.sensor : 'SHT30'}</span>
                   </label>
                   <span className="sync-disp-temp">
                     {tempB ? ((tempB.temp_c * 9/5 + 32) + (offsets.b || 0)).toFixed(1) + ' °F' : '—'}
@@ -2267,250 +2749,269 @@ function App() {
                       disabled={!tempC}
                       onChange={() => toggleSyncInclude('c')}
                     />
-                    <span className="sync-unit-name">C</span>
-                    <span className="sync-sensor-tag">{UNIT_SENSORS.c}</span>
+                    <span className="sync-unit-name">Unit C</span>
+                    <span className="sync-sensor-tag">{info.unitC ? info.unitC.sensor : 'DHT11'}</span>
                   </label>
                   <span className="sync-disp-temp">
                     {tempC ? ((tempC.temp_c * 9/5 + 32) + (offsets.c || 0)).toFixed(1) + ' °F' : '—'}
                   </span>
                 </div>
-                <button className="sync-btn" onClick={syncToAverage} disabled={!canSync()}>
-                  Sync
-                </button>
+                <div className="sync-controls">
+                  <button className="m-btn m-btn-primary" onClick={syncToAverage} disabled={!canSync()}>
+                    Align Offsets
+                  </button>
+                  <div className="sync-hint">
+                    Equalizes temperature readouts to their collective average.
+                  </div>
+                </div>
               </div>
             </div>
             
-            <div className="signal-panel">
-              <div className="panel-title">
-                Signal Strength
-                <span className={'ws-dot ' + (wsConnected ? 'connected' : 'disconnected')} />
-              </div>
-              <div className="signal-rows">
-                {renderSignalRow('A ↔ WiFi', rssi.wifi)}
-                {renderSignalRow('A ↔ B', rssi.b)}
-                {renderSignalRow('A ↔ C', rssi.c)}
-              </div>
-            </div>
+            <SignalPanel rssi={rssi} wsConnected={wsConnected} />
           </div>
 
           {/* Unit cards */}
           <div className="grid">
 
-        {/* ── UNIT A ── */}
-        <div className="unit">
-          <div className="unit-header">
-            <div className="unit-swatch" style={{ background: colors.a }} />
-            <div>
-              <div className="unit-label">
-                Unit A
-                <span className="unit-role-chip">{info.unitA ? info.unitA.role : 'hub'}</span>
+            {/* ── UNIT A ── */}
+            <div className="m-card unit">
+              <div className="unit-header">
+                <div className="unit-swatch" style={{ background: colors.a }} />
+                <div className="unit-title-group">
+                  <div className="unit-label">
+                    Unit A
+                    <span className="unit-role-chip">{info.unitA ? info.unitA.role : 'hub'}</span>
+                  </div>
+                  <div className="unit-sensor-chip">{info.unitA ? info.unitA.sensor : 'DHT22'}</div>
+                </div>
               </div>
-              <div className="unit-sensor-chip">{info.unitA ? info.unitA.sensor : UNIT_SENSORS.a}</div>
+              
               <div className="unit-meta">
                 <div className="unit-meta-row"><span className="unit-meta-label">MAC</span><span className="unit-meta-val">{info.unitA ? info.unitA.mac : '—'}</span></div>
-                {info.unitA && info.unitA.ip && <div className="unit-meta-row"><span className="unit-meta-label">IP</span><span className="unit-meta-val ip">{info.unitA.ip}</span></div>}
-                {info.unitA && info.unitA.port && <div className="unit-meta-row"><span className="unit-meta-label">Port</span><span className="unit-meta-val">{info.unitA.port}</span></div>}
+                {info.unitA && info.unitA.ip && <div className="unit-meta-row"><span className="unit-meta-label">IP Address</span><span className="unit-meta-val ip">{info.unitA.ip}</span></div>}
+                {info.unitA && info.unitA.port && <div className="unit-meta-row"><span className="unit-meta-label">COM Port</span><span className="unit-meta-val">{info.unitA.port}</span></div>}
                 {info.unitA && info.unitA.transport && <div className="unit-meta-row"><span className="unit-meta-label">Link</span><span className="unit-meta-val transport">{info.unitA.transport}</span></div>}
               </div>
-            </div>
-          </div>
-          
-          {/* Collapsible color control */}
-          <div 
-            className="color-toggle" 
-            onClick={() => setColorExpanded(prev => ({ ...prev, a: !prev.a }))}
-          >
-            <div className="color-toggle-indicator" style={{ background: colors.a }} />
-            <span>LED Color</span>
-            <span style={{ marginLeft: 'auto', fontSize: '.7rem' }}>
-              {colorExpanded.a ? '▼' : '▶'}
-            </span>
-          </div>
-          
-          <div className={'color-section' + (colorExpanded.a ? ' open' : '')}>
-            <ColorPicker hex={colors.a} onChange={handleColorA} disabled={false} />
-            <button className="send-btn" disabled={busyA} onClick={handleSendA}>
-              Send to Unit A
-            </button>
-            <button className="off-btn" disabled={busyA} onClick={() => sendColor('a', 0, 0, 0, setBusyA, setStatusA)}>
-              Turn OFF
-            </button>
-            <div className={'status ' + (statusA ? (statusA.ok ? 'ok' : 'err') : '')}>
-              {statusA ? statusA.msg : ''}
-            </div>
-          </div>
-          
-          <TempBadge 
-            data={tempA} 
-            offset={offsets.a} 
-            unitId="a"
-            calibratedTempC={tempA ? applyCalibratedTemp('a', tempA.temp_c) : null}
-          />
-          <TempOffset value={offsets.a} onChange={v => setOffset('a', v)} />
-        </div>
-
-        {/* ── UNIT B ── */}
-        <div className={`unit ${!unitAReachable ? 'alert' : ''}`}>
-          {!unitAReachable && (
-            <div className="unit-alert-banner">
-              <span className="unit-alert-icon">⚠️</span>
-              <span>Unit A must be active</span>
-            </div>
-          )}
-          <div className="unit-header">
-            <div className="unit-swatch" style={{ background: colors.b }} />
-            <div>
-              <div className="unit-label">
-                Unit B
-                <span className="unit-role-chip">{info.unitB ? info.unitB.role : 'sensor'}</span>
+              
+              <div className="color-control-box">
+                <div 
+                  className="color-toggle" 
+                  onClick={() => setColorExpanded(prev => ({ ...prev, a: !prev.a }))}
+                >
+                  <div className="color-toggle-indicator" style={{ background: colors.a }} />
+                  <span>LED Node Control</span>
+                  <span style={{ marginLeft: 'auto' }} className="material-symbols-outlined">
+                    {colorExpanded.a ? 'expand_less' : 'expand_more'}
+                  </span>
+                </div>
+                
+                <div className={'color-section' + (colorExpanded.a ? ' open' : '')}>
+                  <ColorPicker hex={colors.a} onChange={handleColorA} disabled={false} />
+                  <div className="picker-actions">
+                    <button className="m-btn m-btn-primary" disabled={busyA} onClick={handleSendA}>
+                      Apply Color
+                    </button>
+                    <button className="m-btn m-btn-secondary" disabled={busyA} onClick={() => sendColor('a', 0, 0, 0, setBusyA, setStatusA)}>
+                      Off
+                    </button>
+                  </div>
+                  {statusA && (
+                    <div className={'status-badge ' + (statusA.ok ? 'ok' : 'err')}>
+                      {statusA.msg}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="unit-sensor-chip">{info.unitB ? info.unitB.sensor : UNIT_SENSORS.b}</div>
+              
+              <TempBadge 
+                data={tempA} 
+                offset={offsets.a} 
+                unitId="a"
+                calibratedTempC={tempA ? applyCalibratedTemp('a', tempA.temp_c) : null}
+              />
+              <TempOffset value={offsets.a} onChange={v => setOffset('a', v)} />
+            </div>
+
+            {/* ── UNIT B ── */}
+            <div className={`m-card unit ${!unitAReachable ? 'alert' : ''}`}>
+              {!unitAReachable && (
+                <div className="unit-alert-banner">
+                  <span className="material-symbols-outlined" style={{fontSize:'16px'}}>warning</span>
+                  <span>Unit A Offline</span>
+                </div>
+              )}
+              <div className="unit-header">
+                <div className="unit-swatch" style={{ background: colors.b }} />
+                <div className="unit-title-group">
+                  <div className="unit-label">
+                    Unit B
+                    <span className="unit-role-chip">{info.unitB ? info.unitB.role : 'sensor'}</span>
+                  </div>
+                  <div className="unit-sensor-chip">{info.unitB ? info.unitB.sensor : 'SHT30'}</div>
+                </div>
+              </div>
+
               <div className="unit-meta">
                 <div className="unit-meta-row"><span className="unit-meta-label">MAC</span><span className="unit-meta-val">{info.unitB ? info.unitB.mac : '—'}</span></div>
-                {info.unitB && info.unitB.port && <div className="unit-meta-row"><span className="unit-meta-label">Port</span><span className="unit-meta-val">{info.unitB.port}</span></div>}
+                {info.unitB && info.unitB.port && <div className="unit-meta-row"><span className="unit-meta-label">COM Port</span><span className="unit-meta-val">{info.unitB.port}</span></div>}
                 {info.unitB && info.unitB.transport && <div className="unit-meta-row"><span className="unit-meta-label">Link</span><span className="unit-meta-val transport">{info.unitB.transport}</span></div>}
               </div>
-            </div>
-          </div>
-          <div className="mode-row">
-            <label>
-              <input type="radio" name="modeB" value="match"
-                     checked={modeB === 'match'}
-                     onChange={() => dispatch({ type: 'MODE_B', mode: 'match' })} />
-              Match A
-            </label>
-            <label>
-              <input type="radio" name="modeB" value="independent"
-                     checked={modeB === 'independent'}
-                     onChange={() => dispatch({ type: 'MODE_B', mode: 'independent' })} />
-              Independent
-            </label>
-          </div>
-          
-          {/* Collapsible color control */}
-          <div 
-            className="color-toggle" 
-            onClick={() => setColorExpanded(prev => ({ ...prev, b: !prev.b }))}
-          >
-            <div className="color-toggle-indicator" style={{ background: colors.b }} />
-            <span>LED Color</span>
-            <span style={{ marginLeft: 'auto', fontSize: '.7rem' }}>
-              {colorExpanded.b ? '▼' : '▶'}
-            </span>
-          </div>
-          
-          <div className={'color-section' + (colorExpanded.b ? ' open' : '')}>
-            <ColorPicker hex={colors.b}
-                         onChange={hex => dispatch({ type: 'COLOR', unit: 'b', hex })}
-                         disabled={modeB === 'match'} />
-            <button className="send-btn"
-                    disabled={busyB || modeB !== 'independent'}
-                    onClick={() => { const {r,g,b} = hexToRgb(colors.b); sendColor('b',r,g,b,setBusyB,setStatusB); }}>
-              Send to Unit B
-            </button>
-            <button className="off-btn"
-                    disabled={busyB || modeB !== 'independent'}
-                    onClick={() => sendColor('b', 0, 0, 0, setBusyB, setStatusB)}>
-              Turn OFF
-            </button>
-            <div className={'status ' + (statusB ? (statusB.ok ? 'ok' : 'err') : '')}>
-              {statusB ? statusB.msg : ''}
-            </div>
-          </div>
-          
-          <TempBadge 
-            data={tempB} 
-            offset={offsets.b} 
-            unitId="b"
-            calibratedTempC={tempB ? applyCalibratedTemp('b', tempB.temp_c) : null}
-          />
-          <TempOffset value={offsets.b} onChange={v => setOffset('b', v)} />
-        </div>
 
-        {/* ── UNIT C ── */}
-        <div className={`unit ${!unitAReachable ? 'alert' : ''}`}>
-          {!unitAReachable && (
-            <div className="unit-alert-banner">
-              <span className="unit-alert-icon">⚠️</span>
-              <span>Unit A must be active</span>
-            </div>
-          )}
-          <div className="unit-header">
-            <div className="unit-swatch" style={{ background: colors.c }} />
-            <div>
-              <div className="unit-label">
-                Unit C
-                <span className="unit-role-chip">{info.unitC ? info.unitC.role : 'sensor'}</span>
+              <div className="mode-row">
+                <label style={{display:'flex', alignItems:'center', gap:'4px', cursor:'pointer'}}>
+                  <input type="radio" name="modeB" value="match"
+                         checked={modeB === 'match'}
+                         onChange={() => dispatch({ type: 'MODE_B', mode: 'match' })}
+                         style={{accentColor: 'var(--md-sys-color-primary)'}} />
+                  <span>Match Unit A</span>
+                </label>
+                <label style={{display:'flex', alignItems:'center', gap:'4px', cursor:'pointer'}}>
+                  <input type="radio" name="modeB" value="independent"
+                         checked={modeB === 'independent'}
+                         onChange={() => dispatch({ type: 'MODE_B', mode: 'independent' })}
+                         style={{accentColor: 'var(--md-sys-color-primary)'}} />
+                  <span>Independent</span>
+                </label>
               </div>
-              <div className="unit-sensor-chip">{info.unitC ? info.unitC.sensor : UNIT_SENSORS.c}</div>
+              
+              <div className="color-control-box">
+                <div 
+                  className="color-toggle" 
+                  onClick={() => setColorExpanded(prev => ({ ...prev, b: !prev.b }))}
+                >
+                  <div className="color-toggle-indicator" style={{ background: colors.b }} />
+                  <span>LED Node Control</span>
+                  <span style={{ marginLeft: 'auto' }} className="material-symbols-outlined">
+                    {colorExpanded.b ? 'expand_less' : 'expand_more'}
+                  </span>
+                </div>
+                
+                <div className={'color-section' + (colorExpanded.b ? ' open' : '')}>
+                  <ColorPicker hex={colors.b}
+                               onChange={hex => dispatch({ type: 'COLOR', unit: 'b', hex })}
+                               disabled={modeB === 'match'} />
+                  <div className="picker-actions">
+                    <button className="m-btn m-btn-primary"
+                            disabled={busyB || modeB === 'match'}
+                            onClick={() => { const {r,g,b} = hexToRgb(colors.b); sendColor('b',r,g,b,setBusyB,setStatusB); }}>
+                      Apply Color
+                    </button>
+                    <button className="m-btn m-btn-secondary"
+                            disabled={busyB || modeB === 'match'}
+                            onClick={() => sendColor('b', 0, 0, 0, setBusyB, setStatusB)}>
+                      Off
+                    </button>
+                  </div>
+                  {statusB && (
+                    <div className={'status-badge ' + (statusB.ok ? 'ok' : 'err')}>
+                      {statusB.msg}
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <TempBadge 
+                data={tempB} 
+                offset={offsets.b} 
+                unitId="b"
+                calibratedTempC={tempB ? applyCalibratedTemp('b', tempB.temp_c) : null}
+              />
+              <TempOffset value={offsets.b} onChange={v => setOffset('b', v)} />
+            </div>
+
+            {/* ── UNIT C ── */}
+            <div className={`m-card unit ${!unitAReachable ? 'alert' : ''}`}>
+              {!unitAReachable && (
+                <div className="unit-alert-banner">
+                  <span className="material-symbols-outlined" style={{fontSize:'16px'}}>warning</span>
+                  <span>Unit A Offline</span>
+                </div>
+              )}
+              <div className="unit-header">
+                <div className="unit-swatch" style={{ background: colors.c }} />
+                <div className="unit-title-group">
+                  <div className="unit-label">
+                    Unit C
+                    <span className="unit-role-chip">{info.unitC ? info.unitC.role : 'sensor'}</span>
+                  </div>
+                  <div className="unit-sensor-chip">{info.unitC ? info.unitC.sensor : 'DHT11'}</div>
+                </div>
+              </div>
+
               <div className="unit-meta">
                 <div className="unit-meta-row"><span className="unit-meta-label">MAC</span><span className="unit-meta-val">{info.unitC ? info.unitC.mac : '—'}</span></div>
-                {info.unitC && info.unitC.port && <div className="unit-meta-row"><span className="unit-meta-label">Port</span><span className="unit-meta-val">{info.unitC.port}</span></div>}
+                {info.unitC && info.unitC.port && <div className="unit-meta-row"><span className="unit-meta-label">COM Port</span><span className="unit-meta-val">{info.unitC.port}</span></div>}
                 {info.unitC && info.unitC.transport && <div className="unit-meta-row"><span className="unit-meta-label">Link</span><span className="unit-meta-val transport">{info.unitC.transport}</span></div>}
               </div>
-            </div>
-          </div>
-          <div className="mode-row">
-            <label>
-              <input type="radio" name="modeC" value="match"
-                     checked={modeC === 'match'}
-                     onChange={() => dispatch({ type: 'MODE_C', mode: 'match' })} />
-              Match A
-            </label>
-            <label>
-              <input type="radio" name="modeC" value="independent"
-                     checked={modeC === 'independent'}
-                     onChange={() => dispatch({ type: 'MODE_C', mode: 'independent' })} />
-              Independent
-            </label>
-          </div>
-          
-          {/* Collapsible color control */}
-          <div 
-            className="color-toggle" 
-            onClick={() => setColorExpanded(prev => ({ ...prev, c: !prev.c }))}
-          >
-            <div className="color-toggle-indicator" style={{ background: colors.c }} />
-            <span>LED Color</span>
-            <span style={{ marginLeft: 'auto', fontSize: '.7rem' }}>
-              {colorExpanded.c ? '▼' : '▶'}
-            </span>
-          </div>
-          
-          <div className={'color-section' + (colorExpanded.c ? ' open' : '')}>
-            <ColorPicker hex={colors.c}
-                         onChange={hex => dispatch({ type: 'COLOR', unit: 'c', hex })}
-                         disabled={modeC === 'match'} />
-            <button className="send-btn"
-                    disabled={busyC || modeC !== 'independent'}
-                    onClick={() => { const {r,g,b} = hexToRgb(colors.c); sendColor('c',r,g,b,setBusyC,setStatusC); }}>
-              Send to Unit C
-            </button>
-            <button className="off-btn"
-                    disabled={busyC || modeC !== 'independent'}
-                    onClick={() => sendColor('c', 0, 0, 0, setBusyC, setStatusC)}>
-              Turn OFF
-            </button>
-            <div className={'status ' + (statusC ? (statusC.ok ? 'ok' : 'err') : '')}>
-              {statusC ? statusC.msg : ''}
-            </div>
-          </div>
-          
-          <TempBadge 
-            data={tempC} 
-            offset={offsets.c} 
-            unitId="c"
-            calibratedTempC={tempC ? applyCalibratedTemp('c', tempC.temp_c) : null}
-          />
-          <TempOffset value={offsets.c} onChange={v => setOffset('c', v)} />
-        </div>
 
-          </div> {/* end grid */}
-        </div> {/* end controls tab */}
+              <div className="mode-row">
+                <label style={{display:'flex', alignItems:'center', gap:'4px', cursor:'pointer'}}>
+                  <input type="radio" name="modeC" value="match"
+                         checked={modeC === 'match'}
+                         onChange={() => dispatch({ type: 'MODE_C', mode: 'match' })}
+                         style={{accentColor: 'var(--md-sys-color-primary)'}} />
+                  <span>Match Unit A</span>
+                </label>
+                <label style={{display:'flex', alignItems:'center', gap:'4px', cursor:'pointer'}}>
+                  <input type="radio" name="modeC" value="independent"
+                         checked={modeC === 'independent'}
+                         onChange={() => dispatch({ type: 'MODE_C', mode: 'independent' })}
+                         style={{accentColor: 'var(--md-sys-color-primary)'}} />
+                  <span>Independent</span>
+                </label>
+              </div>
+              
+              <div className="color-control-box">
+                <div 
+                  className="color-toggle" 
+                  onClick={() => setColorExpanded(prev => ({ ...prev, c: !prev.c }))}
+                >
+                  <div className="color-toggle-indicator" style={{ background: colors.c }} />
+                  <span>LED Node Control</span>
+                  <span style={{ marginLeft: 'auto' }} className="material-symbols-outlined">
+                    {colorExpanded.c ? 'expand_less' : 'expand_more'}
+                  </span>
+                </div>
+                
+                <div className={'color-section' + (colorExpanded.c ? ' open' : '')}>
+                  <ColorPicker hex={colors.c}
+                               onChange={hex => dispatch({ type: 'COLOR', unit: 'c', hex })}
+                               disabled={modeC === 'match'} />
+                  <div className="picker-actions">
+                    <button className="m-btn m-btn-primary"
+                            disabled={busyC || modeC === 'match'}
+                            onClick={() => { const {r,g,b} = hexToRgb(colors.c); sendColor('c',r,g,b,setBusyC,setStatusC); }}>
+                      Apply Color
+                    </button>
+                    <button className="m-btn m-btn-secondary"
+                            disabled={busyC || modeC === 'match'}
+                            onClick={() => sendColor('c', 0, 0, 0, setBusyC, setStatusC)}>
+                      Off
+                    </button>
+                  </div>
+                  {statusC && (
+                    <div className={'status-badge ' + (statusC.ok ? 'ok' : 'err')}>
+                      {statusC.msg}
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <TempBadge 
+                data={tempC} 
+                offset={offsets.c} 
+                unitId="c"
+                calibratedTempC={tempC ? applyCalibratedTemp('c', tempC.temp_c) : null}
+              />
+              <TempOffset value={offsets.c} onChange={v => setOffset('c', v)} />
+            </div>
+
+          </div>
+        </div>
 
         {/* ── TEMPERATURE GRAPH TAB ── */}
         <div className={'tab-panel' + (activeTab === 'graph' ? ' active' : '')}>
-          <TemperatureGraph history={state.tempHistory} />
+          <TemperatureGraph />
         </div>
 
         {/* ── CALIBRATION TAB ── */}
@@ -2518,7 +3019,7 @@ function App() {
           <CalibrationPanel />
         </div>
 
-        {/* ── ACTIVITY LOG TAB ── */}
+        {/* ── LOGS TAB ── */}
         <div className={'tab-panel' + (activeTab === 'log' ? ' active' : '')}>
           <ActivityLog entries={log} />
         </div>
