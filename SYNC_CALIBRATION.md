@@ -1,4 +1,7 @@
-# Temperature Synchronization & Calibration Guide
+# Temperature Synchronization & Calibration Guide (Legacy/Debug)
+
+> [!WARNING]
+> This document describes legacy **firmware-level NVS offsets** which are kept for debug/manual legacy purposes only. For the primary, automated, and unified calibration system, see [CALIBRATION.md](CALIBRATION.md).
 
 ## Problem Solved
 

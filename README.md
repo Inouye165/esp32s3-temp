@@ -51,63 +51,19 @@ ESP-NOW experimentation project using three **udevqal ESP32-S3 N16R8** developme
 
 ## Temperature Synchronization & Calibration
 
-**Problem:** Temperature readings from different sensors (DHT11, DHT22, SHT30) can drift apart due to:
-- Different reading times (no synchronization)
-- Different sensor accuracies (±2°C for DHT11, ±0.5°C for DHT22, ±0.3°C for SHT30)
-- Sensor-specific offsets and calibration errors
-- Different physical locations and ambient conditions
+**Problem:** Temperature readings from different sensors (DHT11, DHT22, SHT30) can drift apart due to different sensor accuracies (±2°C for DHT11, ±0.5°C for DHT22, ±0.3°C for SHT30) and inherent sensor bias.
 
-**Solution:** Synchronized reading + persistent calibration offsets
+**Solution:** Server-Side Database Calibration.
+The server-side SQLite database (`calibration_coefficients` table) is the single source of truth for calibration. The system automatically computes linear correction formulas from historical co-located sensor data, ensuring they show equal readings when kept in the same spot.
 
 ### How It Works
 
-1. **Unit A broadcasts SYNC commands** every 30 seconds (or on-demand via `/sync`)
-2. **Units B and C respond immediately** by reading their sensors
-3. **Unit A reads its own sensor** at the same time
-4. **Calibration offsets** are applied to all readings and stored in NVS (non-volatile storage)
+1. **Synchronization**: Unit A broadcasts SYNC commands every 30 seconds to trigger simultaneous sensor reads across all three modules.
+2. **Co-location calibration**: Place all modules in the same physical spot for several hours, then click "Build Calibration From History" in the dashboard.
+3. **Database fitting**: The server analyzes co-located history, uses the Group Mean at each timestamp as target truth, and fits a linear calibration model `corrected = c0 + c1 * raw` for each unit (falling back to simple offset `corrected = raw + offset` if the range is narrow or fit is unstable).
+4. **Validation**: Coefficients are sanity-checked, and calibration is only applied if the post-calibration unit-to-unit spread is improved.
 
-### New HTTP Endpoints
-
-```bash
-# Trigger immediate synchronized read
-GET http://10.0.0.48/sync
-
-# Set calibration offset (in °C)
-GET http://10.0.0.48/set_cal?unit=a&offset=-0.3
-GET http://10.0.0.48/set_cal?unit=b&offset=0.0
-GET http://10.0.0.48/set_cal?unit=c&offset=-1.6
-
-# Get current calibration
-GET http://10.0.0.48/get_cal
-
-# Reset all calibration to zero
-GET http://10.0.0.48/reset_cal
-```
-
-### Quick Calibration Guide
-
-1. **Place all units close together** and wait 10-15 minutes
-2. **Trigger sync read:** `curl http://10.0.0.48/sync`
-3. **Read all temperatures:**
-   ```bash
-   curl http://10.0.0.48/temp_a  # e.g., 23.5°C
-   curl http://10.0.0.48/temp_b  # e.g., 23.2°C (SHT30, most accurate)
-   curl http://10.0.0.48/temp_c  # e.g., 24.8°C
-   ```
-4. **Choose Unit B as reference** (SHT30 is most accurate)
-5. **Calculate offsets:**
-   - Unit A: 23.2 - 23.5 = **-0.3**
-   - Unit B: 23.2 - 23.2 = **0.0**
-   - Unit C: 23.2 - 24.8 = **-1.6**
-6. **Apply calibration:**
-   ```bash
-   curl "http://10.0.0.48/set_cal?unit=a&offset=-0.3"
-   curl "http://10.0.0.48/set_cal?unit=b&offset=0.0"
-   curl "http://10.0.0.48/set_cal?unit=c&offset=-1.6"
-   ```
-7. **Verify:** `curl http://10.0.0.48/sync` then check temps again
-
-**See [SYNC_CALIBRATION.md](SYNC_CALIBRATION.md) for detailed instructions.**
+**See [CALIBRATION.md](CALIBRATION.md) for detailed instructions.**
 
 ---
 
@@ -332,8 +288,7 @@ Unit C (COM14)   <-- DHT11 on GPIO 4, channel-locked to 11
 - Unit A is the only board on WiFi. Units B and C use ESP-NOW only.
 - ESP-NOW link is locked to channel 11 (must match the router channel A connects to).
 - The dashboard shows live RSSI for A↔WiFi, A↔B, and A↔C.
-- Per-sensor calibration offsets (°F) are persisted in browser `localStorage`.
-- "Sync to Average" adjusts checked units' offsets so they all display the same temperature.
+- Server-side database calibration automatically aligns colocated temperatures.
 
 ---
 
@@ -395,10 +350,9 @@ Beautifully designed following Google's **Material Design 3** guidelines:
     Card header shows: role chip (SENSOR), sensor (SHT30), MAC, COM port, transport (ESP-NOW ch 11).
   - **Unit C** — Match A / Independent mode, colour picker, live **DHT11** temperature, calibration offset.
     Card header shows: role chip (SENSOR), sensor (DHT11), MAC, COM port, transport (ESP-NOW ch 11).
-  - **Calibration Sync panel** — checkbox per unit + "Align Offsets" button. Offsets persist in `localStorage`.
   - **Signal Quality panel** — live RSSI bars for A↔WiFi, A↔B, and A↔C (streamed via WebSocket every 3 seconds, or polled via REST fallback when disconnected).
-- **History Graph Tab**: Plot temperature curves over 1h/6h/24h/7d. Includes a checkbox to switch between raw and active calibrated curves.
-- **Calibration Curve Tab**: Manually manage calibration sessions or auto-sync sessions. Corrected peer calibration math utilizes the session peer average as reference temp if none is provided.
+- **History Graph Tab**: Plot temperature curves over 1h/6h/24h/7d. Calibrated curves are displayed by default.
+- **Calibration Curve Tab**: Select historical analysis range (e.g. last 24h), trigger dry run or real calibration building, clear calibration, and inspect active formulas, intercept/slope coefficients, and accuracy statistics.
 
 If the server can't reach Unit A, Units B and C cards display a "Unit A must be active" warning banner.
 
