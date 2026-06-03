@@ -316,6 +316,116 @@
     display: flex; align-items: center; justify-content: center;
     height: 100%; color: #555; font-size: .85rem;
   }
+
+  /* ── calibration panel ── */
+  .cal-panel {
+    width: 100%; background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 8px;
+    padding: 20px; overflow-y: auto; max-height: calc(100vh - 180px);
+  }
+  .cal-section {
+    margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid #2c2c2c;
+  }
+  .cal-section:last-child { border-bottom: none; margin-bottom: 0; }
+  .cal-section-title {
+    font-size: .85rem; color: #aaa; letter-spacing: .06em;
+    margin-bottom: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px;
+  }
+  .cal-form {
+    display: grid; gap: 12px; max-width: 600px;
+  }
+  .cal-form-row {
+    display: flex; gap: 10px; align-items: center;
+  }
+  .cal-label {
+    min-width: 120px; font-size: .8rem; color: #888;
+  }
+  .cal-input {
+    flex: 1; background: #252525; border: 1px solid #333; color: #e0e0e0;
+    border-radius: 6px; padding: 8px 12px; font-size: .85rem;
+  }
+  .cal-input:focus { outline: none; border-color: #2d5af5; }
+  .cal-input[type=datetime-local] { font-family: monospace; }
+  .cal-hint {
+    font-size: .7rem; color: #666; margin-top: 4px; font-style: italic;
+  }
+  .cal-btn {
+    padding: 10px 18px; border: 1px solid #2d5af5; border-radius: 6px;
+    background: #2d5af5; color: #fff; font-weight: 600; font-size: .85rem;
+    cursor: pointer; transition: all .15s;
+  }
+  .cal-btn:hover:not(:disabled) { background: #4068ff; }
+  .cal-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .cal-btn-secondary {
+    background: #252525; border-color: #444; color: #aaa;
+  }
+  .cal-btn-secondary:hover:not(:disabled) { background: #2d2d2d; }
+  .cal-btn-danger {
+    background: #8b0000; border-color: #8b0000; color: #fff;
+  }
+  .cal-btn-danger:hover:not(:disabled) { background: #a00000; }
+  
+  .cal-sessions {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .cal-session-card {
+    background: #252525; border: 1px solid #333; border-radius: 6px;
+    padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .cal-session-info {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .cal-session-name {
+    font-size: .9rem; font-weight: 600; color: #e0e0e0;
+  }
+  .cal-session-meta {
+    font-size: .72rem; color: #888; font-family: monospace;
+  }
+  .cal-session-ref {
+    font-size: .75rem; color: #7ecfff; margin-top: 2px;
+  }
+  .cal-session-actions {
+    display: flex; gap: 6px;
+  }
+  
+  .cal-coeffs {
+    display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+  .cal-coeff-card {
+    background: #252525; border: 1px solid #333; border-radius: 6px;
+    padding: 14px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .cal-coeff-title {
+    font-size: .9rem; font-weight: 600; color: #e0e0e0; margin-bottom: 4px;
+  }
+  .cal-coeff-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: .75rem;
+  }
+  .cal-coeff-label { color: #888; }
+  .cal-coeff-value { color: #7ecfff; font-family: monospace; }
+  .cal-coeff-rmse { color: #5fdb8a; }
+  
+  .cal-preview {
+    background: #252525; border: 1px solid #333; border-radius: 6px;
+    padding: 12px; margin-top: 10px; display: grid; gap: 8px;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .cal-preview-unit {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .cal-preview-label {
+    font-size: .7rem; color: #888; text-transform: uppercase;
+  }
+  .cal-preview-value {
+    font-size: 1rem; font-weight: 600; color: #7ecfff; font-family: monospace;
+  }
+  .cal-preview-range {
+    font-size: .65rem; color: #666;
+  }
+  
+  .cal-empty {
+    color: #666; font-size: .8rem; font-style: italic; padding: 20px; text-align: center;
+  }
 </style>
 </head>
 <body>
@@ -480,7 +590,7 @@ function SignalPanel({ rssi, wsConnected }) {
 }
 
 // ── TempBadge ─────────────────────────────────────────────────────────────────
-function TempBadge({ data, offset = 0 }) {
+function TempBadge({ data, offset = 0, unitId, calibratedTempC }) {
   if (!data) {
     return (
       <div className="temp-badge">
@@ -495,13 +605,25 @@ function TempBadge({ data, offset = 0 }) {
       </div>
     );
   }
-  const f   = ((data.temp_c * 9 / 5 + 32) + offset).toFixed(1);
+  
+  const rawF = (data.temp_c * 9 / 5 + 32).toFixed(1);
+  const displayF = ((data.temp_c * 9 / 5 + 32) + offset).toFixed(1);
   const age = data.age < 60 ? data.age + ' s ago' : Math.floor(data.age / 60) + ' min ago';
+  
+  // If calibration is available, show calibrated value
+  const hasCal = calibratedTempC !== null && calibratedTempC !== undefined && calibratedTempC !== data.temp_c;
+  const calF = hasCal ? (calibratedTempC * 9 / 5 + 32).toFixed(1) : null;
+  
   return (
     <div className="temp-badge">
       <div>
         <div className="lbl">Temp</div>
-        <div className="val">{f} °F</div>
+        <div className="val">{displayF} °F</div>
+        {hasCal && (
+          <div style={{ fontSize: '.7rem', color: '#5fdb8a', marginTop: '2px' }}>
+            📐 Cal: {calF} °F
+          </div>
+        )}
       </div>
       <div className="hum">
         <div className="lbl">Humidity</div>
@@ -885,6 +1007,951 @@ function TemperatureGraph({ history }) {
   );
 }
 
+// ── CalibrationPanel ──────────────────────────────────────────────────────────
+function CalibrationPanel() {
+  const [sessions, setSessions] = useState([]);
+  const [coefficients, setCoefficients] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState(null);
+  
+  // Form state for new calibration session
+  const [sessionName, setSessionName] = useState('');
+  const [referenceTemp, setReferenceTemp] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [notes, setNotes] = useState('');
+  const [preview, setPreview] = useState(null);
+  const [computeDegree, setComputeDegree] = useState(2);
+
+  // ── Auto-Sync Calibration Mode state ──
+  const [autoMode, setAutoMode] = useState({ enabled: false, degree: 1, autoRecompute: true, captureWindowSec: 90 });
+  const [coverage, setCoverage] = useState({ numPoints: 0, minF: null, maxF: null });
+  const [captureLabel, setCaptureLabel] = useState('');
+  const [captureRef, setCaptureRef] = useState('');
+  const [capturing, setCapturing] = useState(false);
+  const [lastCapture, setLastCapture] = useState(null);
+
+  // ── Bootstrap (fit polynomial from all historical paired readings) ──
+  const [bootstrapInfo, setBootstrapInfo] = useState(null);   // { numPaired, truthRangeF }
+  const [bootstrapping, setBootstrapping] = useState(false);
+  const [bootstrapDegree, setBootstrapDegree] = useState(2);
+  const [bootstrapStartTime, setBootstrapStartTime] = useState('');
+  const [bootstrapEndTime, setBootstrapEndTime] = useState('');
+  
+  // Fetch sessions and coefficients on mount
+  useEffect(() => {
+    fetchSessions();
+    fetchCoefficients();
+    fetchAutoMode();
+    fetchBootstrapInfo();
+  }, []);
+
+  async function fetchBootstrapInfo() {
+    try {
+      const res = await fetch('/api/calibration/bootstrap');
+      const data = await res.json();
+      if (data.ok) setBootstrapInfo(data);
+    } catch (err) {
+      console.error('[bootstrap] fetch failed:', err);
+    }
+  }
+
+  async function handleBootstrap() {
+    if (!bootstrapInfo || bootstrapInfo.numPaired === 0) {
+      setMessage({ type: 'error', text: 'No paired historical readings available.' });
+      return;
+    }
+    const timeRangeDesc = (!bootstrapStartTime && !bootstrapEndTime) 
+      ? 'all data'
+      : (bootstrapStartTime && bootstrapEndTime
+        ? `data from ${new Date(bootstrapStartTime).toLocaleDateString()} to ${new Date(bootstrapEndTime).toLocaleDateString()}`
+        : (bootstrapStartTime
+          ? `data from ${new Date(bootstrapStartTime).toLocaleDateString()} onwards`
+          : `data up to ${new Date(bootstrapEndTime).toLocaleDateString()}`));
+    if (!confirm(`Fit a degree-${bootstrapDegree} polynomial from ${bootstrapInfo.numPaired} paired readings (${timeRangeDesc})? This will overwrite any existing coefficients.`)) return;
+    setBootstrapping(true);
+    setMessage({ type: 'info', text: 'Fitting polynomial from history…' });
+    try {
+      const body = { degree: bootstrapDegree };
+      if (bootstrapStartTime) {
+        body.startTime = Math.floor(new Date(bootstrapStartTime).getTime() / 1000);
+      }
+      if (bootstrapEndTime) {
+        body.endTime = Math.floor(new Date(bootstrapEndTime).getTime() / 1000);
+      }
+      const res = await fetch('/api/calibration/bootstrap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        const rmseTxt = ['a','b','c']
+          .filter(u => data.results[u])
+          .map(u => `${u.toUpperCase()}=${data.results[u].rmse.toFixed(3)}°C`)
+          .join(', ');
+        setMessage({
+          type: 'success',
+          text: `Bootstrapped degree-${data.degree} polynomial from ${data.numPaired} pairs (${data.truthRangeF.min.toFixed(1)}–${data.truthRangeF.max.toFixed(1)}°F). RMSE: ${rmseTxt}`,
+        });
+        fetchCoefficients();
+        fetchAutoMode();
+      } else {
+        setMessage({ type: 'error', text: data.message });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Bootstrap failed: ' + err.message });
+    } finally {
+      setBootstrapping(false);
+    }
+  }
+
+  async function fetchAutoMode() {
+    try {
+      const res = await fetch('/api/calibration/automode');
+      const data = await res.json();
+      if (data.ok) {
+        setAutoMode(data.mode);
+        if (data.coverage) setCoverage(data.coverage);
+      }
+    } catch (err) {
+      console.error('[autoCal] fetch failed:', err);
+    }
+  }
+
+  async function toggleAutoMode(enabled) {
+    try {
+      const res = await fetch('/api/calibration/automode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setAutoMode(data.mode);
+        setMessage({ type: 'success', text: enabled ? 'Auto-Sync mode ENABLED — place all sensors together, then capture points.' : 'Auto-Sync mode disabled.' });
+      } else {
+        setMessage({ type: 'error', text: data.message });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed: ' + err.message });
+    }
+  }
+
+  async function updateAutoModeSetting(patch) {
+    try {
+      const res = await fetch('/api/calibration/automode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json();
+      if (data.ok) setAutoMode(data.mode);
+    } catch (err) {
+      console.error('[autoCal] update failed:', err);
+    }
+  }
+
+  async function handleCapturePoint() {
+    setCapturing(true);
+    setMessage({ type: 'info', text: 'Capturing… triggering sync and collecting 3 samples (~5s)…' });
+    try {
+      const res = await fetch('/api/calibration/capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: captureLabel || null,
+          referenceTemp: captureRef || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setLastCapture(data);
+        const fmt = (c) => c === null || c === undefined ? '—' : (c * 9 / 5 + 32).toFixed(1) + '°F';
+        const recomputeMsg = data.recompute
+          ? (data.recompute.ok ? ` Recomputed: ${Object.keys(data.recompute.results || {}).length} unit(s).` : ` Recompute failed: ${data.recompute.message}`)
+          : '';
+        setMessage({
+          type: 'success',
+          text: `Captured "${data.label}" — A=${fmt(data.means.a)} B=${fmt(data.means.b)} C=${fmt(data.means.c)} (mean=${fmt(data.groupMean)}).${recomputeMsg}`,
+        });
+        setCaptureLabel('');
+        setCaptureRef('');
+        fetchSessions();
+        fetchCoefficients();
+        fetchAutoMode();
+      } else {
+        setMessage({ type: 'error', text: data.message });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Capture failed: ' + err.message });
+    } finally {
+      setCapturing(false);
+    }
+  }
+  
+  async function fetchSessions() {
+    try {
+      const res = await fetch('/api/calibration/sessions');
+      const data = await res.json();
+      if (data.ok) setSessions(data.sessions);
+    } catch (err) {
+      console.error('[calibration] Failed to fetch sessions:', err);
+    }
+  }
+  
+  async function fetchCoefficients() {
+    try {
+      const res = await fetch('/api/calibration/coefficients');
+      const data = await res.json();
+      if (data.ok) setCoefficients(data.coefficients);
+    } catch (err) {
+      console.error('[calibration] Failed to fetch coefficients:', err);
+    }
+  }
+  
+  async function handlePreview() {
+    if (!startTime || !endTime) {
+      setMessage({ type: 'error', text: 'Please select start and end times' });
+      return;
+    }
+    
+    const start = Math.floor(new Date(startTime).getTime() / 1000);
+    const end = Math.floor(new Date(endTime).getTime() / 1000);
+    
+    if (end <= start) {
+      setMessage({ type: 'error', text: 'End time must be after start time' });
+      return;
+    }
+    
+    try {
+      const res = await fetch(`/api/calibration/preview?startTime=${start}&endTime=${end}`);
+      const data = await res.json();
+      if (data.ok) {
+        setPreview(data.preview);
+        setMessage(null);
+      } else {
+        setMessage({ type: 'error', text: data.message });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to load preview: ' + err.message });
+    }
+  }
+  
+  async function handleCreateSession(e) {
+    e.preventDefault();
+    
+    if (!startTime || !endTime) {
+      setMessage({ type: 'error', text: 'Please select start and end times' });
+      return;
+    }
+    
+    const start = Math.floor(new Date(startTime).getTime() / 1000);
+    const end = Math.floor(new Date(endTime).getTime() / 1000);
+    
+    if (end <= start) {
+      setMessage({ type: 'error', text: 'End time must be after start time' });
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const res = await fetch('/api/calibration/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: sessionName || null,
+          referenceTemp: referenceTemp ? parseFloat(referenceTemp) : null,
+          startTime: start,
+          endTime: end,
+          notes: notes || null,
+        }),
+      });
+      
+      const data = await res.json();
+      if (data.ok) {
+        setMessage({ type: 'success', text: 'Calibration session created!' });
+        // Reset form
+        setSessionName('');
+        setReferenceTemp('');
+        setStartTime('');
+        setEndTime('');
+        setNotes('');
+        setPreview(null);
+        // Refresh sessions list
+        fetchSessions();
+      } else {
+        setMessage({ type: 'error', text: data.message });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to create session: ' + err.message });
+    } finally {
+      setLoading(false);
+    }
+  }
+  
+  async function handleDeleteSession(sessionId) {
+    if (!confirm('Delete this calibration session?')) return;
+    
+    try {
+      const res = await fetch(`/api/calibration/sessions/${sessionId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) {
+        setMessage({ type: 'success', text: 'Session deleted' });
+        fetchSessions();
+      } else {
+        setMessage({ type: 'error', text: data.message });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to delete session: ' + err.message });
+    }
+  }
+  
+  async function handleComputeCalibration() {
+    if (sessions.length === 0) {
+      setMessage({ type: 'error', text: 'No calibration sessions found. Create sessions first.' });
+      return;
+    }
+    
+    setLoading(true);
+    setMessage({ type: 'info', text: 'Computing calibration coefficients...' });
+    
+    try {
+      const res = await fetch('/api/calibration/compute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ degree: computeDegree }),
+      });
+      
+      const data = await res.json();
+      if (data.ok) {
+        setMessage({ type: 'success', text: 'Calibration computed successfully!' });
+        fetchCoefficients();
+      } else {
+        setMessage({ type: 'error', text: data.message });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to compute calibration: ' + err.message });
+    } finally {
+      setLoading(false);
+    }
+  }
+  
+  async function handleDeleteCoefficients(unitId) {
+    if (!confirm(`Delete calibration for Unit ${unitId.toUpperCase()}?`)) return;
+    
+    try {
+      const res = await fetch(`/api/calibration/coefficients/${unitId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) {
+        setMessage({ type: 'success', text: 'Calibration deleted' });
+        fetchCoefficients();
+      } else {
+        setMessage({ type: 'error', text: data.message });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to delete: ' + err.message });
+    }
+  }
+  
+  function setTimeRangeToday() {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0);
+    setStartTime(start.toISOString().slice(0, 16));
+    setEndTime(now.toISOString().slice(0, 16));
+  }
+  
+  function setTimeRangeLast24h() {
+    const now = new Date();
+    const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    setStartTime(start.toISOString().slice(0, 16));
+    setEndTime(now.toISOString().slice(0, 16));
+  }
+  
+  return (
+    <div className="cal-panel">
+      
+      {/* Message banner */}
+      {message && (
+        <div style={{
+          padding: '12px',
+          marginBottom: '16px',
+          borderRadius: '6px',
+          background: message.type === 'error' ? '#2a1a1a' : message.type === 'success' ? '#1a2a1a' : '#1a1a2a',
+          color: message.type === 'error' ? '#f87171' : message.type === 'success' ? '#4ade80' : '#7ecfff',
+          border: `1px solid ${message.type === 'error' ? '#8b0000' : message.type === 'success' ? '#2d7a3e' : '#2d5af5'}`,
+          fontSize: '.85rem',
+        }}>
+          {message.text}
+        </div>
+      )}
+      
+      {/* Section 0: Auto-Sync Calibration Mode (NEW) */}
+      <div className="cal-section" style={{
+        border: autoMode.enabled ? '2px solid #2d5af5' : '1px solid #2a2a2a',
+        borderRadius: '8px',
+        padding: '14px',
+        background: autoMode.enabled ? 'rgba(45,90,245,0.06)' : 'transparent',
+      }}>
+        <div className="cal-section-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          🤖 Auto-Sync Calibration Mode
+          <span style={{
+            fontSize: '.7rem',
+            padding: '2px 8px',
+            borderRadius: '10px',
+            background: autoMode.enabled ? '#2d5af5' : '#333',
+            color: '#fff',
+          }}>
+            {autoMode.enabled ? 'ON' : 'OFF'}
+          </span>
+        </div>
+
+        <p style={{ fontSize: '.8rem', color: '#888', marginBottom: '12px', lineHeight: 1.5 }}>
+          Place all 3 sensors together so they read the same true temperature.
+          Enable the mode, then click <strong>Capture Point Now</strong> after each stabilisation.
+          Move the cluster to a new temperature (cold room, warm room, hot box, fridge…),
+          wait 10–15&nbsp;min, capture again. The server will refit the equation across the whole range automatically.
+        </p>
+
+        {/* Toggle + settings row */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '14px' }}>
+          <button
+            className={'cal-btn' + (autoMode.enabled ? ' cal-btn-danger' : '')}
+            onClick={() => toggleAutoMode(!autoMode.enabled)}
+            style={{ flex: 'none' }}
+          >
+            {autoMode.enabled ? 'Disable Mode' : 'Enable Auto-Sync Mode'}
+          </button>
+
+          <label style={{ fontSize: '.8rem', color: '#bbb', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            Degree:
+            <select
+              className="cal-input"
+              value={autoMode.degree}
+              onChange={(e) => updateAutoModeSetting({ degree: parseInt(e.target.value) })}
+              style={{ flex: 'none', width: '120px' }}
+            >
+              <option value={1}>1 (Linear)</option>
+              <option value={2}>2 (Quadratic)</option>
+              <option value={3}>3 (Cubic)</option>
+            </select>
+          </label>
+
+          <label style={{ fontSize: '.8rem', color: '#bbb', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <input
+              type="checkbox"
+              checked={autoMode.autoRecompute}
+              onChange={(e) => updateAutoModeSetting({ autoRecompute: e.target.checked })}
+            />
+            Auto-recompute equation after each capture
+          </label>
+        </div>
+
+        {/* Coverage summary */}
+        <div style={{
+          padding: '10px 12px',
+          background: '#181818',
+          borderRadius: '6px',
+          fontSize: '.78rem',
+          color: '#bbb',
+          marginBottom: '14px',
+        }}>
+          <strong style={{ color: '#fff' }}>Coverage:</strong>{' '}
+          {coverage.numPoints === 0 ? (
+            <span style={{ color: '#facc15' }}>No calibration points yet. Capture at least 2 (linear) or 5 (quadratic) across your range.</span>
+          ) : (
+            <>
+              {coverage.numPoints} point(s)
+              {coverage.minF !== null && coverage.maxF !== null && (
+                <> spanning <strong style={{ color: '#7ecfff' }}>{coverage.minF.toFixed(1)}°F → {coverage.maxF.toFixed(1)}°F</strong> ({(coverage.maxF - coverage.minF).toFixed(1)}°F range)</>
+              )}
+              {coverage.numPoints < (autoMode.degree + 1) && (
+                <span style={{ color: '#facc15' }}> — need {autoMode.degree + 1 - coverage.numPoints} more for degree {autoMode.degree}.</span>
+              )}
+              {coverage.numPoints >= (autoMode.degree + 1) && coverage.rangeC !== null && coverage.rangeC < 10 && (
+                <span style={{ color: '#facc15' }}> — try adding points farther apart (current spread is small).</span>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Bootstrap from existing history */}
+        <div style={{
+          padding: '12px',
+          background: '#1a1f0e',
+          border: '1px solid #6b7f1e',
+          borderRadius: '6px',
+          marginBottom: '14px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+            <strong style={{ color: '#e8ed9e', fontSize: '.85rem' }}>📚 Bootstrap from History</strong>
+            <span style={{ fontSize: '.75rem', color: '#bbb' }}>
+              {bootstrapInfo
+                ? (bootstrapInfo.numPaired > 0 && bootstrapInfo.truthRangeF
+                  ? `${bootstrapInfo.numPaired} paired readings, range ${bootstrapInfo.truthRangeF.min.toFixed(1)}–${bootstrapInfo.truthRangeF.max.toFixed(1)}°F (${bootstrapInfo.truthRangeF.spread.toFixed(1)}°F spread)`
+                  : bootstrapInfo.numPaired > 0
+                  ? `${bootstrapInfo.numPaired} paired readings (range data unavailable)`
+                  : 'no paired readings in selected time range')
+                : 'loading…'}
+            </span>
+          </div>
+          <p style={{ fontSize: '.75rem', color: '#999', margin: '0 0 12px 0' }}>
+            Select a time range when all 3 sensors were colocated. Leave blank to use all data.
+          </p>
+          
+          {/* Time range selection */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+            <div>
+              <label style={{ fontSize: '.75rem', color: '#bbb', display: 'block', marginBottom: '4px' }}>Start Time (leave blank for all before end)</label>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <input
+                  type="datetime-local"
+                  className="cal-input"
+                  value={bootstrapStartTime}
+                  onChange={(e) => setBootstrapStartTime(e.target.value)}
+                  disabled={bootstrapping}
+                  style={{ flex: '1' }}
+                />
+                <button
+                  className="cal-btn cal-btn-secondary"
+                  onClick={() => setBootstrapStartTime('')}
+                  disabled={bootstrapping || !bootstrapStartTime}
+                  style={{ padding: '6px 10px', fontSize: '.7rem' }}
+                  title="Clear start time"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+            <div>
+              <label style={{ fontSize: '.75rem', color: '#bbb', display: 'block', marginBottom: '4px' }}>End Time (leave blank for all after start)</label>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <input
+                  type="datetime-local"
+                  className="cal-input"
+                  value={bootstrapEndTime}
+                  onChange={(e) => setBootstrapEndTime(e.target.value)}
+                  disabled={bootstrapping}
+                  style={{ flex: '1' }}
+                />
+                <button
+                  className="cal-btn cal-btn-secondary"
+                  onClick={() => setBootstrapEndTime('')}
+                  disabled={bootstrapping || !bootstrapEndTime}
+                  style={{ padding: '6px 10px', fontSize: '.7rem' }}
+                  title="Clear end time"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+            <label style={{ fontSize: '.8rem', color: '#bbb', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              Degree:
+              <select
+                className="cal-input"
+                value={bootstrapDegree}
+                onChange={(e) => setBootstrapDegree(parseInt(e.target.value))}
+                style={{ flex: 'none', width: '120px' }}
+                disabled={bootstrapping}
+              >
+                <option value={1}>1 (Linear)</option>
+                <option value={2}>2 (Quadratic)</option>
+                <option value={3}>3 (Cubic)</option>
+              </select>
+            </label>
+            <button
+              className="cal-btn"
+              onClick={fetchBootstrapInfo}
+              disabled={bootstrapping}
+              style={{ flex: 'none' }}
+            >
+              📊 Preview Data
+            </button>
+            <button
+              className="cal-btn"
+              onClick={handleBootstrap}
+              disabled={bootstrapping || !bootstrapInfo || bootstrapInfo.numPaired === 0}
+              style={{ flex: 'none', background: '#2d5af5', border: '1px solid #4a7bff' }}
+            >
+              {bootstrapping ? '⏳ Fitting…' : '✅ Fit & Save Equation'}
+            </button>
+          </div>
+          {bootstrapInfo && bootstrapInfo.truthRangeF && bootstrapInfo.truthRangeF.spread < 15 && (
+            <div style={{ fontSize: '.72rem', color: '#facc15', marginTop: '8px' }}>
+              ⚠️ Range is narrow ({bootstrapInfo.truthRangeF.spread.toFixed(1)}°F). The fit will be valid in this band only.
+              For full-range accuracy (e.g. 50°F & 105°F), enable Auto-Sync Mode below and capture points at extreme temperatures.
+            </div>
+          )}
+        </div>
+
+        {/* Capture form (only when enabled) */}
+        {autoMode.enabled && (
+          <div style={{
+            padding: '14px',
+            background: '#0e1422',
+            borderRadius: '6px',
+            border: '1px solid #2d5af5',
+          }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+              <input
+                type="text"
+                className="cal-input"
+                placeholder="Optional label (auto-generated if blank)"
+                value={captureLabel}
+                onChange={(e) => setCaptureLabel(e.target.value)}
+                style={{ flex: '2 1 220px' }}
+                disabled={capturing}
+              />
+              <input
+                type="number"
+                step="0.1"
+                className="cal-input"
+                placeholder="Ref temp (°C, optional)"
+                value={captureRef}
+                onChange={(e) => setCaptureRef(e.target.value)}
+                style={{ flex: '1 1 160px' }}
+                disabled={capturing}
+              />
+              <button
+                className="cal-btn"
+                onClick={handleCapturePoint}
+                disabled={capturing}
+                style={{ flex: 'none', padding: '10px 18px', fontSize: '.9rem' }}
+              >
+                {capturing ? '⏳ Capturing…' : '📸 Capture Point Now'}
+              </button>
+            </div>
+            <div className="cal-hint" style={{ marginTop: '10px' }}>
+              ℹ️ Reference temp is optional. Leave blank to use the mean of all 3 sensors as truth (correct when sensors are colocated).
+              Each capture takes ~5&nbsp;s: server triggers an ESP sync, then collects 3 fresh samples.
+            </div>
+
+            {lastCapture && (
+              <div style={{
+                marginTop: '12px',
+                padding: '10px',
+                background: '#1a2a1a',
+                borderRadius: '4px',
+                fontSize: '.78rem',
+                color: '#9fe9b0',
+              }}>
+                ✓ Last capture: <strong>{lastCapture.label}</strong>
+                {' — '}
+                A={lastCapture.means.a !== null ? (lastCapture.means.a * 9 / 5 + 32).toFixed(1) + '°F' : '—'},{' '}
+                B={lastCapture.means.b !== null ? (lastCapture.means.b * 9 / 5 + 32).toFixed(1) + '°F' : '—'},{' '}
+                C={lastCapture.means.c !== null ? (lastCapture.means.c * 9 / 5 + 32).toFixed(1) + '°F' : '—'}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Section 1: Create Calibration Session */}
+      <div className="cal-section">
+        <div className="cal-section-title">
+          📊 Create Calibration Session
+        </div>
+        <p style={{ fontSize: '.8rem', color: '#888', marginBottom: '16px' }}>
+          Select a time range when all sensors were in the same stable environment. 
+          Optionally enter a reference temperature from an independent thermometer.
+        </p>
+        
+        <form className="cal-form" onSubmit={handleCreateSession}>
+          <div className="cal-form-row">
+            <label className="cal-label">Session Name</label>
+            <input 
+              type="text" 
+              className="cal-input" 
+              placeholder="e.g., Indoor baseline"
+              value={sessionName}
+              onChange={(e) => setSessionName(e.target.value)}
+            />
+          </div>
+          
+          <div className="cal-form-row">
+            <label className="cal-label">Start Time</label>
+            <input 
+              type="datetime-local" 
+              className="cal-input"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              required
+            />
+            <button 
+              type="button" 
+              className="cal-btn cal-btn-secondary" 
+              onClick={setTimeRangeToday}
+              style={{ flex: 'none' }}
+            >
+              Today
+            </button>
+            <button 
+              type="button" 
+              className="cal-btn cal-btn-secondary" 
+              onClick={setTimeRangeLast24h}
+              style={{ flex: 'none' }}
+            >
+              Last 24h
+            </button>
+          </div>
+          
+          <div className="cal-form-row">
+            <label className="cal-label">End Time</label>
+            <input 
+              type="datetime-local" 
+              className="cal-input"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              required
+            />
+          </div>
+          
+          <div className="cal-form-row">
+            <label className="cal-label">Reference Temp (°C)</label>
+            <input 
+              type="number" 
+              step="0.1"
+              className="cal-input" 
+              placeholder="Leave empty to use sensor mean"
+              value={referenceTemp}
+              onChange={(e) => setReferenceTemp(e.target.value)}
+            />
+          </div>
+          <div className="cal-hint">
+            ℹ️ If you have an independent thermometer reading, enter it here. 
+            Otherwise, the system will use the mean of all sensors as the reference.
+          </div>
+          
+          <div className="cal-form-row">
+            <label className="cal-label">Notes</label>
+            <input 
+              type="text" 
+              className="cal-input" 
+              placeholder="Optional notes about this calibration point"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+          
+          <div className="cal-form-row" style={{ gap: '12px' }}>
+            <button 
+              type="button" 
+              className="cal-btn cal-btn-secondary" 
+              onClick={handlePreview}
+              disabled={loading}
+            >
+              Preview Data
+            </button>
+            <button 
+              type="submit" 
+              className="cal-btn"
+              disabled={loading}
+            >
+              Create Session
+            </button>
+          </div>
+        </form>
+        
+        {/* Preview panel */}
+        {preview && (
+          <div className="cal-preview">
+            {['a', 'b', 'c'].map(unit => (
+              <div key={unit} className="cal-preview-unit">
+                <div className="cal-preview-label">Unit {unit.toUpperCase()}</div>
+                {preview[unit] && preview[unit].count > 0 ? (
+                  <>
+                    <div className="cal-preview-value">
+                      {preview[unit].mean.toFixed(2)}°C
+                    </div>
+                    <div className="cal-preview-range">
+                      {preview[unit].min.toFixed(1)} – {preview[unit].max.toFixed(1)}°C ({preview[unit].count} readings)
+                    </div>
+                  </>
+                ) : (
+                  <div className="cal-preview-value" style={{ color: '#666' }}>No data</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      
+      {/* Section 2: Existing Sessions */}
+      <div className="cal-section">
+        <div className="cal-section-title">
+          📋 Calibration Sessions ({sessions.length})
+        </div>
+        
+        {sessions.length === 0 ? (
+          <div className="cal-empty">
+            No calibration sessions yet. Create one above to get started.
+          </div>
+        ) : (
+          <div className="cal-sessions">
+            {sessions.map(session => (
+              <div key={session.id} className="cal-session-card">
+                <div className="cal-session-info">
+                  <div className="cal-session-name">
+                    {session.name || 'Unnamed Session'}
+                  </div>
+                  <div className="cal-session-meta">
+                    {new Date(session.start_time * 1000).toLocaleString()} → {new Date(session.end_time * 1000).toLocaleString()}
+                  </div>
+                  {session.reference_temp && (
+                    <div className="cal-session-ref">
+                      Reference: {session.reference_temp.toFixed(2)}°C
+                    </div>
+                  )}
+                  {session.notes && (
+                    <div style={{ fontSize: '.7rem', color: '#999', marginTop: '4px' }}>
+                      {session.notes}
+                    </div>
+                  )}
+                </div>
+                <div className="cal-session-actions">
+                  <button 
+                    className="cal-btn cal-btn-danger"
+                    style={{ padding: '6px 12px', fontSize: '.75rem' }}
+                    onClick={() => handleDeleteSession(session.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      
+      {/* Section 3: Compute Calibration */}
+      <div className="cal-section">
+        <div className="cal-section-title">
+          🧮 Compute Calibration Coefficients
+        </div>
+        <p style={{ fontSize: '.8rem', color: '#888', marginBottom: '16px' }}>
+          After creating 5+ calibration sessions at different stable temperatures, 
+          compute the polynomial correction coefficients.
+        </p>
+        
+        <div className="cal-form-row" style={{ maxWidth: '600px', gap: '12px' }}>
+          <label className="cal-label">Polynomial Degree</label>
+          <select 
+            className="cal-input" 
+            value={computeDegree}
+            onChange={(e) => setComputeDegree(parseInt(e.target.value))}
+            style={{ flex: 'none', width: '100px' }}
+          >
+            <option value={1}>1 (Linear)</option>
+            <option value={2}>2 (Quadratic)</option>
+            <option value={3}>3 (Cubic)</option>
+          </select>
+          <button 
+            className="cal-btn"
+            onClick={handleComputeCalibration}
+            disabled={loading || sessions.length === 0}
+          >
+            Compute Now
+          </button>
+        </div>
+        
+        <div className="cal-hint" style={{ marginTop: '12px' }}>
+          ℹ️ Recommended: Use degree 2 (quadratic) with 5+ calibration points spread across your temperature range.
+        </div>
+      </div>
+      
+      {/* Section 4: Current Calibration Coefficients */}
+      <div className="cal-section">
+        <div className="cal-section-title">
+          ✅ Active Calibration Coefficients
+        </div>
+        
+        {Object.keys(coefficients).length === 0 ? (
+          <div className="cal-empty">
+            No calibration coefficients computed yet. Create sessions and compute calibration above.
+          </div>
+        ) : (
+          <div className="cal-coeffs">
+            {['a', 'b', 'c'].map(unitId => {
+              const coeff = coefficients[unitId];
+              if (!coeff) return null;
+              
+              return (
+                <div key={unitId} className="cal-coeff-card">
+                  <div className="cal-coeff-title">
+                    Unit {unitId.toUpperCase()}
+                    <button 
+                      style={{ 
+                        float: 'right', 
+                        padding: '4px 8px', 
+                        fontSize: '.7rem',
+                        background: '#8b0000',
+                        border: 'none',
+                        borderRadius: '4px',
+                        color: '#fff',
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => handleDeleteCoefficients(unitId)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                  
+                  <div className="cal-coeff-row">
+                    <span className="cal-coeff-label">Degree:</span>
+                    <span className="cal-coeff-value">{coeff.degree}</span>
+                  </div>
+                  
+                  <div className="cal-coeff-row">
+                    <span className="cal-coeff-label">c0 (constant):</span>
+                    <span className="cal-coeff-value">{coeff.c0 != null ? coeff.c0.toFixed(6) : '—'}</span>
+                  </div>
+                  
+                  <div className="cal-coeff-row">
+                    <span className="cal-coeff-label">c1 (linear):</span>
+                    <span className="cal-coeff-value">{coeff.c1 != null ? coeff.c1.toFixed(6) : '—'}</span>
+                  </div>
+                  
+                  {coeff.degree >= 2 && (
+                    <div className="cal-coeff-row">
+                      <span className="cal-coeff-label">c2 (quadratic):</span>
+                      <span className="cal-coeff-value">{coeff.c2 != null ? coeff.c2.toFixed(6) : '—'}</span>
+                    </div>
+                  )}
+                  
+                  {coeff.degree >= 3 && (
+                    <div className="cal-coeff-row">
+                      <span className="cal-coeff-label">c3 (cubic):</span>
+                      <span className="cal-coeff-value">{coeff.c3 != null ? coeff.c3.toFixed(6) : '—'}</span>
+                    </div>
+                  )}
+                  
+                  <div className="cal-coeff-row">
+                    <span className="cal-coeff-label">RMSE:</span>
+                    <span className="cal-coeff-rmse">{coeff.rmse != null ? coeff.rmse.toFixed(3) + '°C' : '—'}</span>
+                  </div>
+                  
+                  <div className="cal-coeff-row">
+                    <span className="cal-coeff-label">Data Points:</span>
+                    <span className="cal-coeff-value">{coeff.num_points}</span>
+                  </div>
+                  
+                  <div style={{ fontSize: '.65rem', color: '#666', marginTop: '6px' }}>
+                    Updated: {new Date(coeff.computed_at).toLocaleString()}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      
+    </div>
+  );
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 function App() {
   const [state, dispatch] = useReducer(reducer, INIT);
@@ -905,6 +1972,10 @@ function App() {
     catch { return { a: 0, b: 0, c: 0 }; }
   };
   const [offsets, setOffsets] = useState(loadOffsets);
+  
+  // Calibration coefficients (polynomial)
+  const [calibCoeffs, setCalibCoeffs] = useState({});
+  
   function setOffset(unit, val) {
     setOffsets(prev => {
       const next = { ...prev, [unit]: val };
@@ -954,6 +2025,29 @@ function App() {
       .then(d => dispatch({ type: 'INFO', data: d }))
       .catch(() => {});
   }, []);
+
+  // Fetch calibration coefficients on mount and when tab changes to calibration
+  useEffect(() => {
+    fetch('/api/calibration/coefficients')
+      .then(r => r.json())
+      .then(d => { if (d.ok) setCalibCoeffs(d.coefficients); })
+      .catch(() => {});
+  }, [activeTab]); // Refresh when switching tabs
+
+  // Helper function to apply polynomial calibration
+  const applyCalibratedTemp = (unitId, rawTempC) => {
+    if (rawTempC === null || rawTempC === undefined) return null;
+    const coeff = calibCoeffs[unitId];
+    if (!coeff) return rawTempC; // No calibration available
+    
+    // T_corrected = c0 + c1*T + c2*T^2 + c3*T^3
+    const { c0, c1, c2, c3, degree } = coeff;
+    let corrected = c0 + c1 * rawTempC;
+    if (degree >= 2) corrected += c2 * rawTempC * rawTempC;
+    if (degree >= 3) corrected += c3 * rawTempC * rawTempC * rawTempC;
+    
+    return corrected;
+  };
 
   // Unit A health check — checks connectivity to Unit A (ESP32 sender)
   useEffect(() => {
@@ -1111,6 +2205,12 @@ function App() {
           Temperature History
         </button>
         <button 
+          className={'tab-btn' + (activeTab === 'calibration' ? ' active' : '')}
+          onClick={() => setActiveTab('calibration')}
+        >
+          Calibration
+        </button>
+        <button 
           className={'tab-btn' + (activeTab === 'log' ? ' active' : '')}
           onClick={() => setActiveTab('log')}
         >
@@ -1240,7 +2340,12 @@ function App() {
             </div>
           </div>
           
-          <TempBadge data={tempA} offset={offsets.a} />
+          <TempBadge 
+            data={tempA} 
+            offset={offsets.a} 
+            unitId="a"
+            calibratedTempC={tempA ? applyCalibratedTemp('a', tempA.temp_c) : null}
+          />
           <TempOffset value={offsets.a} onChange={v => setOffset('a', v)} />
         </div>
 
@@ -1313,7 +2418,12 @@ function App() {
             </div>
           </div>
           
-          <TempBadge data={tempB} offset={offsets.b} />
+          <TempBadge 
+            data={tempB} 
+            offset={offsets.b} 
+            unitId="b"
+            calibratedTempC={tempB ? applyCalibratedTemp('b', tempB.temp_c) : null}
+          />
           <TempOffset value={offsets.b} onChange={v => setOffset('b', v)} />
         </div>
 
@@ -1386,7 +2496,12 @@ function App() {
             </div>
           </div>
           
-          <TempBadge data={tempC} offset={offsets.c} />
+          <TempBadge 
+            data={tempC} 
+            offset={offsets.c} 
+            unitId="c"
+            calibratedTempC={tempC ? applyCalibratedTemp('c', tempC.temp_c) : null}
+          />
           <TempOffset value={offsets.c} onChange={v => setOffset('c', v)} />
         </div>
 
@@ -1396,6 +2511,11 @@ function App() {
         {/* ── TEMPERATURE GRAPH TAB ── */}
         <div className={'tab-panel' + (activeTab === 'graph' ? ' active' : '')}>
           <TemperatureGraph history={state.tempHistory} />
+        </div>
+
+        {/* ── CALIBRATION TAB ── */}
+        <div className={'tab-panel' + (activeTab === 'calibration' ? ' active' : '')}>
+          <CalibrationPanel />
         </div>
 
         {/* ── ACTIVITY LOG TAB ── */}
